@@ -165,7 +165,7 @@ elif st.session_state.page == "Báo Giá":
     col_input, col_display = st.columns([1, 2])
 
     with col_input:
-        st.markdown("### ⚙️ Cài đặt thông số")
+        st.markdown("### Thông tin chi tiết ")
         
         with st.expander("1. Giá xe & Ưu đãi", expanded=True):
             edit_base = st.number_input("Giá niêm yết (VNĐ)", value=base_price_init, step=1000000)
