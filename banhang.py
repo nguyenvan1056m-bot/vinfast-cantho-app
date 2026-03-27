@@ -439,7 +439,7 @@ elif st.session_state.page == "Báo Giá":
 
         st.divider()
         st.download_button(
-            label="📊 XUẤT BÁO GIÁ MẪU VINFAST",
+            label="📊 XUẤT BÁO GIÁ ",
             data=output.getvalue(),
             file_name=f"Bao_Gia_{q.get('Họ Tên', 'Khach')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -607,7 +607,7 @@ elif st.session_state.page == "Quyết Toán":
         rows.append(["11", "**GIÁ HĐ ( XHĐ )**", f"**{G:,}**", "**G=A-B-D-E-F**"])
         
         st.table(pd.DataFrame(rows, columns=["STT", "Nội dung", "Số tiền (VNĐ)", "Note"]))
-        st.error(f"### TỔNG CÔNG TY THU (G): {G:,} VNĐ")
+        st.error(f"### TỔNG CÔNG TY THU : {G:,} VNĐ")
 
         # Hiển thị Tổng cộng to rõ
         
@@ -861,3 +861,64 @@ elif st.session_state.page == "Theo Dõi":
         # Đoạn này xử lý khi chưa có file (Thụt lề đúng 1 Tab so với 'if os.path.exists')
         st.info("Chưa có hồ sơ nào được chốt sang bảng Theo Dõi.")
         st.caption("Hãy hoàn tất bước 'Quyết Toán' cho khách hàng để đưa họ vào danh sách này.")
+elif st.session_state.page == "Lợi Nhuận":
+    st.header("📊 QUẢN LÝ LỢI NHUẬN CHI TIẾT")
+    
+    if os.path.exists("data_theo_doi_xe.csv"):
+        df_profit = pd.read_csv("data_theo_doi_xe.csv", encoding='utf-8-sig')
+        
+        # 1. Khai báo danh sách các trường chi phí theo ảnh bạn gửi
+        cost_cols = [
+            'Giá Vốn', 'Phụ Kiện', 'Bảo Hiểm', 
+            'Đăng Ký', 'Thưởng Sale', 'Chi Phí Khác'
+        ]
+        
+        # Kiểm tra và thêm cột nếu chưa có trong file CSV
+        for col in cost_cols:
+            if col not in df_profit.columns:
+                df_profit[col] = 0
+        
+        # 2. Tính toán Lợi Nhuận
+        # Lợi nhuận = Giá Chốt - Tổng các chi phí
+        df_profit['Lợi Nhuận'] = df_profit['Số Tiền Chốt Khách'] - df_profit[cost_cols].sum(axis=1)
+
+        # 3. Hiển thị bảng tính toán
+        st.subheader("📝 Bảng tính toán lợi nhuận từng xe")
+        st.info("💡 Bạn có thể nhập trực tiếp Giá Vốn, Phụ Kiện... vào bảng dưới đây rồi bấm Lưu.")
+        
+        edited_df = st.data_editor(
+            df_profit,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Khách Hàng": st.column_config.Column(disabled=True),
+                "Loại Xe": st.column_config.Column(disabled=True),
+                "Số Tiền Chốt Khách": st.column_config.NumberColumn("Giá Chốt", format="%,d", disabled=True),
+                "Giá Vốn": st.column_config.NumberColumn(format="%,d"),
+                "Phụ Kiện": st.column_config.NumberColumn(format="%,d"),
+                "Bảo Hiểm": st.column_config.NumberColumn(format="%,d"),
+                "Đăng Ký": st.column_config.NumberColumn(format="%,d"),
+                "Thưởng Sale": st.column_config.NumberColumn(format="%,d"),
+                "Chi Phí Khác": st.column_config.NumberColumn(format="%,d"),
+                "Lợi Nhuận": st.column_config.NumberColumn(format="%,d", disabled=True),
+            }
+        )
+
+        # 4. Hiển thị Tổng hợp nhanh (KPI) phía dưới
+        st.divider()
+        total_rev = edited_df['Số Tiền Chốt Khách'].sum()
+        total_cost = edited_df[cost_cols].sum().sum()
+        total_profit = edited_df['Lợi Nhuận'].sum()
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("💰 TỔNG GIÁ CHỐT", f"{total_rev:,.0f}")
+        c2.metric("💸 TỔNG CHI PHÍ", f"{total_cost:,.0f}")
+        c3.metric("📈 THU NHẬP RÒNG", f"{total_profit:,.0f}", delta=f"{(total_profit/total_rev*100):.1f}%" if total_rev > 0 else None)
+
+        if st.button("💾 CẬP NHẬT DỮ LIỆU TÀI CHÍNH", type="primary"):
+            edited_df.to_csv("data_theo_doi_xe.csv", index=False, encoding='utf-8-sig')
+            st.success("✅ Đã lưu báo cáo lợi nhuận thành công!")
+            st.rerun()
+            
+    else:
+        st.warning("⚠️ Chưa có dữ liệu xe đã chốt. Vui lòng hoàn tất Quyết Toán trước.")
