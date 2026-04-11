@@ -1084,11 +1084,22 @@ elif st.session_state.page == "Danh Sách":
         try:
             # 1. Đọc dữ liệu từ file CSV
             df_list = pd.read_csv(DATA_FILE, encoding='utf-8-sig')
+            df_list.columns = [c.strip() for c in df_list.columns] # Xóa khoảng trắng thừa
+
+            # --- BỘ LỌC TÊN THÔNG MINH (QUAN TRỌNG NHẤT) ---
+            # Nếu file có 'Khách Hàng' mà không có 'Họ Tên', hãy tạo ra cột 'Họ Tên' để các hàm cũ không lỗi
+            if 'Khách Hàng' in df_list.columns and 'Họ Tên' not in df_list.columns:
+                df_list['Họ Tên'] = df_list['Khách Hàng']
+            # Ngược lại, nếu có 'Họ Tên' mà thiếu 'Khách Hàng' (file cũ)
+            elif 'Họ Tên' in df_list.columns and 'Khách Hàng' not in df_list.columns:
+                df_list['Khách Hàng'] = df_list['Họ Tên']
+            # -----------------------------------------------
             
             # --- PHẦN CHỌN KHÁCH HÀNG QUYẾT TOÁN ---
             st.markdown("### 📑 Chốt Quyết Toán")
             col_select, col_btn = st.columns([3, 1])
             
+            # Bây giờ df_list chắc chắn đã có cột 'Họ Tên' nhờ bộ lọc trên
             list_names = df_list['Họ Tên'].tolist()
             selected_name = col_select.selectbox(
                 "Chọn khách hàng:", 
@@ -1097,41 +1108,41 @@ elif st.session_state.page == "Danh Sách":
                 placeholder="Chọn tên khách để quyết toán..."
             )
           
-            if col_btn.button("🚀 Sang Quyết Toán", width="stretch") and selected_name:
+            if col_btn.button("🚀 Sang Quyết Toán", use_container_width=True) and selected_name:
                 row_kh = df_list[df_list['Họ Tên'] == selected_name].iloc[0]
                 
-                # 1. Lấy giá xe và tiền đăng ký đã lưu trong file
+                # Lấy giá trị an toàn bằng .get() để tránh lỗi văng app
                 gia_xe_chuan = row_kh.get('Giá Sau Ưu Đãi', 0)
-                phi_dk_da_luu = row_kh.get('Tiền Đăng Ký', 0) # Lấy đúng cột này trong file CSV
+                phi_dk_da_luu = row_kh.get('Tiền Đăng Ký', 0)
 
-                # 2. Tính lại số tiền vay 85%
                 tien_vay_de_sang_qt = int(float(gia_xe_chuan) * 0.85) 
 
-                # 3. NẠP CẢ 2 VÀO TÚI NHỚ
                 st.session_state['so_tien_vay_shared'] = tien_vay_de_sang_qt
-                st.session_state['chi_phi_dk_shared'] = int(phi_dk_da_luu) # Đưa Tiền Đăng Ký vào đây
+                st.session_state['chi_phi_dk_shared'] = int(phi_dk_da_luu)
                 
                 st.session_state['current_customer'] = row_kh.to_dict()
                 st.session_state.page = "Quyết Toán"
                 st.rerun()            
             st.divider()
 
-            # --- PHẦN HIỂN THỊ BẢNG SỬA/XÓA (GIỮ NGUYÊN) ---
+            # --- PHẦN HIỂN THỊ BẢNG SỬA/XÓA ---
             st.markdown("### 📝 Chỉnh sửa danh sách")
+            
+            # Chỉ hiển thị các cột thực sự tồn tại để tránh lỗi cấu hình NumberColumn
+            conf_cols = {}
+            for c in ["Giá Sau Ưu Đãi", "Tiền Đăng Ký", "Tổng Tiền"]:
+                if c in df_list.columns:
+                    conf_cols[c] = st.column_config.NumberColumn(format="%,d")
+
             edited = st.data_editor(
                 df_list, 
                 num_rows="dynamic", 
-                width="stretch", 
+                use_container_width=True, 
                 hide_index=True,
-                column_config={
-                    
-                    "Giá Sau Ưu Đãi": st.column_config.NumberColumn(format="%,d"),
-                    "Tiền Đăng Ký": st.column_config.NumberColumn(format="%,d"),
-                    "Tổng Tiền": st.column_config.NumberColumn(format="%,d")
-                }
+                column_config=conf_cols
             )
             
-            if st.button("💾 CẬP NHẬT THAY ĐỔI", width="stretch"):
+            if st.button("💾 CẬP NHẬT THAY ĐỔI", use_container_width=True):
                 edited.to_csv(DATA_FILE, index=False, encoding='utf-8-sig')
                 st.success("Đã cập nhật!"); st.rerun()
 
