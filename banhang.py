@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 import time
 import io
+import csv
 # --- 1. CẤU HÌNH FILE DỮ LIỆU ---
 st.set_page_config(page_title="VFG CT-SERVICE - VinFast", layout="wide")
 
@@ -18,7 +19,7 @@ LN_FILE = "data_loi_nhuan.csv"
 QT_FILE = "data_quyet_toan.csv"
 CPK_FILE = 'data_chi_phi_khac.csv'
 COLS_ORDER = [
-    "Ngày", "Họ Tên", "SĐT", "CCCD", "Địa chỉ", "Xe", "Bản", "Màu", "Chính Sách", "Quà Tặng",
+    "Ngày", "Họ Tên", "SĐT", "CCCD","Email", "Địa chỉ", "Xe", "Bản", "Màu", "Chính Sách", "Quà Tặng",
     "Giá Sau Ưu Đãi","Tiền Đăng Ký", "Tổng Tiền", "Trạng Thái", "Ghi Chú"
 ]
 def init_data():
@@ -101,6 +102,9 @@ if c_nav7.button("📈 LỢI NHUẬN", use_container_width=True):
 st.divider()
 
 # --- 3. TRANG TIẾP NHẬN ---
+
+# Thêm quoting=csv.QUOTE_ALL vào lệnh lưu
+#new_row_df.to_csv(DATA_FILE, mode='a', index=False, header=not os.path.exists(DATA_FILE), encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
 if st.session_state.page == "Tiếp Nhận":
     st.subheader("📝 Phiếu Tiếp Nhận Khách Hàng")
     
@@ -119,8 +123,25 @@ if st.session_state.page == "Tiếp Nhận":
     info_khach = {}
     if os.path.exists(DATA_FILE):
         try:
-            df_history = pd.read_csv(DATA_FILE)
-            # Tạo danh sách Tên - SĐT
+            # 1. Đọc file
+            # Sửa dòng đọc file thành thế này:
+            df_history = pd.read_csv(DATA_FILE, encoding='utf-8-sig', dtype={'SĐT': str, 'CCCD': str, 'Số điện thoại': str})
+            df_history.columns = [c.strip() for c in df_history.columns] # Xóa khoảng trắng tiêu đề
+
+            # --- BỘ LỌC TÊN THÔNG MINH (THÊM VÀO ĐÂY) ---
+            # Nếu file chỉ có 'Khách Hàng', ta tạo thêm cột 'Họ Tên' để code bên dưới không lỗi
+            if 'Khách Hàng' in df_history.columns and 'Họ Tên' not in df_history.columns:
+                df_history['Họ Tên'] = df_history['Khách Hàng']
+            # Ngược lại, nếu file có 'Họ Tên' mà thiếu 'Khách Hàng', ta tạo luôn cho đồng bộ
+            if 'Họ Tên' in df_history.columns and 'Khách Hàng' not in df_history.columns:
+                df_history['Khách Hàng'] = df_history['Họ Tên']
+            
+            # Đảm bảo cột SĐT luôn tồn tại để không lỗi split
+            if 'SĐT' not in df_history.columns:
+                df_history['SĐT'] = '0'
+            # --------------------------------------------
+
+            # Tạo danh sách Tên - SĐT (Lúc này chắc chắn đã có cột 'Họ Tên')
             list_khach = (df_history['Họ Tên'].astype(str) + " - " + df_history['SĐT'].astype(str)).unique().tolist()
             
             khach_chon = st.selectbox(
@@ -131,7 +152,6 @@ if st.session_state.page == "Tiếp Nhận":
                 key=f"search_box_{k}"
             )
             
-            # KHI CHỌN KHÁCH: ÉP DỮ LIỆU CHUỖI ĐỂ HẾT LỖI DÒNG 173
             if khach_chon:
                 t_name = khach_chon.split(" - ")[0]
                 t_phone = khach_chon.split(" - ")[1]
@@ -140,7 +160,7 @@ if st.session_state.page == "Tiếp Nhận":
                 if not match.empty:
                     info_khach = match.iloc[-1].to_dict()
                     
-                    # Dùng str(... or '') để biến các ô trống (NaN) thành chữ, tránh lỗi TypeError
+                    # Điền dữ liệu vào form (Các key 'Họ Tên', 'SĐT'... giờ đã an toàn)
                     st.session_state[f"name_{k}"] = str(info_khach.get('Họ Tên') or '')
                     st.session_state[f"phone_{k}"] = str(info_khach.get('SĐT') or '')
                     st.session_state[f"address_{k}"] = str(info_khach.get('Địa Chỉ') or '')
@@ -158,12 +178,23 @@ if st.session_state.page == "Tiếp Nhận":
         c1, c2, c3 = st.columns(3)
         
         r_name = c1.text_input("Họ và Tên", key=f"name_{k}")
-        r_phone = c1.text_input("Số điện thoại (10 số)", key=f"phone_{k}", max_chars=10)
-        
+        # 1. Lấy dữ liệu từ túi nhớ ra, ép về kiểu chữ và bỏ dấu .0 nếu có
+        sdt_tam = str(st.session_state.get(f"phone_{k}", "")).split('.')[0]
+
+        # 2. CHỐT HẠ: Nếu thiếu số 0 thì bù vào ngay lập tức
+        sdt_chuan = sdt_tam if sdt_tam.startswith('0') or not sdt_tam else "0" + sdt_tam
+
+        # 3. Giữ nguyên code của đại ca, chỉ thêm tham số 'value'
+        r_phone = c1.text_input(
+            "Số điện thoại ", 
+            value=sdt_chuan,      # Ép nó hiện số 0 ở đây
+            key=f"phone_{k}", 
+            max_chars=10          # Để 10 cho chuẩn SĐT Việt Nam
+        )
+
         if r_phone:
             if not r_phone.isdigit(): st.error("⚠️ SĐT chỉ được nhập số!")
-            elif len(r_phone) != 10: st.warning("👉 SĐT phải có đúng 10 số.")
-                
+            elif len(r_phone) != 10: st.warning("👉 SĐT phải có đúng 10 số.")  
         r_address = c2.text_input("Địa chỉ (Quận/Huyện)", key=f"address_{k}")
         r_cccd = c2.text_input("Số CCCD (12 số)", key=f"cccd_{k}", max_chars=12)
         
@@ -488,6 +519,7 @@ elif st.session_state.page == "Báo Giá":
             italic_fmt = workbook.add_format({'italic': True, 'align': 'center'})
 
             # --- VẼ GIAO DIỆN EXCEL ---
+            # --- VẼ GIAO DIỆN EXCEL ---
             worksheet.merge_range('A1:C1', 'BẢNG BÁO GIÁ VÀ DỰ TRÙ CHI PHÍ ĐĂNG KÝ XE', header_fmt)
             worksheet.merge_range('A2:C2', f"Ngày {datetime.now().day} tháng {datetime.now().month} năm {datetime.now().year}", italic_fmt)
 
@@ -507,22 +539,42 @@ elif st.session_state.page == "Báo Giá":
             worksheet.write('B6', gia_ban_sau_uu_dai, total_yellow)
             worksheet.write('C6', 'VNĐ', total_yellow)
 
-            # II. CÁC KHOẢN LỆ PHÍ
-            worksheet.write('A8', 'STT', title_blue)
-            worksheet.write('B8', 'CÁC KHOẢN LỆ PHÍ', title_blue)
-            worksheet.write('C8', 'THÀNH TIỀN (VNĐ)', title_blue)
+            # --- MỚI: II. PHẦN CHƯƠNG TRÌNH KHUYẾN MÃI (QUÀ TẶNG) ---
+            row_idx = 7
+            selected_km = st.session_state.get('selected_km_list', [])
+            
+            if selected_km:
+                row_idx += 1
+                worksheet.merge_range(row_idx, 0, row_idx, 2, 'CHƯƠNG TRÌNH KHUYẾN MÃI & QUÀ TẶNG', title_blue)
+                for km in selected_km:
+                    row_idx += 1
+                    worksheet.write(row_idx, 0, '🎁 Quà tặng', label_fmt)
+                    worksheet.write(row_idx, 1, km['label'], label_fmt)
+                    worksheet.write(row_idx, 2, km['value'], money_fmt)
+                
+                row_idx += 1
+                worksheet.write(row_idx, 1, 'TỔNG TRỊ GIÁ QUÀ TẶNG', total_yellow)
+                worksheet.write(row_idx, 2, st.session_state.get('total_km_value', 0), total_yellow)
+                row_idx += 1 # Khoảng cách
 
-            row_idx = 8
+            # III. CÁC KHOẢN LỆ PHÍ
+            row_idx += 1
+            worksheet.write(row_idx, 0, 'STT', title_blue)
+            worksheet.write(row_idx, 1, 'CÁC KHOẢN LỆ PHÍ', title_blue)
+            worksheet.write(row_idx, 2, 'THÀNH TIỀN (VNĐ)', title_blue)
+            
+            start_fee_row = row_idx + 1
             for i, fee in enumerate(selected_fees_data, 1):
+                row_idx += 1
                 worksheet.write(row_idx, 0, i, label_fmt)
                 worksheet.write(row_idx, 1, fee['label'], label_fmt)
                 worksheet.write(row_idx, 2, fee['value'], money_fmt)
-                row_idx += 1
 
+            row_idx += 1
             worksheet.write(row_idx, 1, 'TỔNG CHI PHÍ ĐĂNG KÝ', total_yellow)
             worksheet.write(row_idx, 2, tong_chi_phi_dk, total_yellow)
 
-            # III. PHƯƠNG THỨC THANH TOÁN
+            # IV. PHƯƠNG THỨC THANH TOÁN
             row_idx += 2
             worksheet.merge_range(row_idx, 0, row_idx, 2, 'I. PHƯƠNG THỨC MUA TIỀN MẶT', title_blue)
             worksheet.write(row_idx+1, 0, 'Tiền xe (1)', label_fmt)
@@ -530,18 +582,20 @@ elif st.session_state.page == "Báo Giá":
             worksheet.write(row_idx+2, 0, 'Chi phí đăng ký (2)', label_fmt)
             worksheet.write(row_idx+2, 2, tong_chi_phi_dk, money_fmt)
             worksheet.write(row_idx+3, 1, 'Tổng cộng (1) + (2)', total_yellow)
-            worksheet.write(row_idx+3, 2, tong_tien_mat, total_yellow)
+            worksheet.write(row_idx+3, 2, (gia_ban_sau_uu_dai + tong_chi_phi_dk), money_fmt) # Sửa lại logic tính tổng nếu cần
 
             row_idx += 5
-            worksheet.merge_range(row_idx, 0, row_idx, 2, 'II. PHƯƠNG THỨC MUA QUA NGÂN HÀNG', title_blue)
+            worksheet.merge_range(row_idx, 0, row_idx, 3, 'II. PHƯƠNG THỨC MUA QUA NGÂN HÀNG', title_blue)
             worksheet.write(row_idx+1, 0, f'Ngân hàng hỗ trợ {vay_percent}%', label_fmt)
             worksheet.write(row_idx+1, 2, so_tien_vay, money_fmt)
             worksheet.write(row_idx+2, 0, f'Trả trước xe (1)', label_fmt)
             worksheet.write(row_idx+2, 2, tra_truoc_xe, money_fmt)
-            worksheet.write(row_idx+3, 1, 'Tổng số tiền trả trước (1) + (ĐK)', total_yellow)
-            worksheet.write(row_idx+3, 2, tong_tra_truoc_nh_, total_yellow)
+            worksheet.write(row_idx+3, 0, 'Chi phí đăng ký (2)', label_fmt)
+            worksheet.write(row_idx+3, 2, tong_chi_phi_dk, money_fmt)
+            worksheet.write(row_idx+4, 1, 'Tổng số tiền trả trước (1) + (ĐK)', total_yellow)
+            worksheet.write(row_idx+4, 2, tong_tra_truoc_nh_, total_yellow)
 
-            worksheet.set_column('A:A', 25); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 20)
+            worksheet.set_column('A:A', 25); worksheet.set_column('B:B', 45); worksheet.set_column('C:C', 25)
             worksheet.hide_gridlines(2)
 
         st.divider()
@@ -579,6 +633,7 @@ elif st.session_state.page == "Báo Giá":
                 "Họ Tên": q.get('name', 'N/A'),
                 "SĐT": q.get('phone', ''),
                 "CCCD": q.get('cccd', ''),
+                "Email": q.get('mail', ''),
                 "Địa Chỉ": q.get('address', ''),
                 "Xe": q.get('car', ''),
                 "Bản": q.get('ver', ''),
@@ -597,8 +652,14 @@ elif st.session_state.page == "Báo Giá":
 
             # 4. GHI VÀO FILE CSV (Chống nhân bản nhiều hàng)
             new_row_df = pd.DataFrame([final_data])
-            new_row_df.to_csv(DATA_FILE, mode='a', index=False, header=not os.path.exists(DATA_FILE), encoding='utf-8-sig')
-            
+            new_row_df.to_csv(
+                DATA_FILE, 
+                mode='a', 
+                index=False, 
+                header=not os.path.exists(DATA_FILE), 
+                encoding='utf-8-sig',
+                quoting=csv.QUOTE_ALL # Bao hết dữ liệu trong dấu "" để Excel không tự đổi định dạng
+            )
             # 5. GHI VÀO FILE LỢI NHUẬN
             ln_row = {
                 "STT": 0, # Bạn có thể dùng len(df)+1 nếu cần
@@ -1083,7 +1144,7 @@ elif st.session_state.page == "Danh Sách":
     if os.path.exists(DATA_FILE):
         try:
             # 1. Đọc dữ liệu từ file CSV
-            df_list = pd.read_csv(DATA_FILE, encoding='utf-8-sig')
+            df_list = pd.read_csv(DATA_FILE, encoding='utf-8-sig', dtype={'SĐT': str, 'CCCD': str, 'Số điện thoại': str})
             df_list.columns = [c.strip() for c in df_list.columns] # Xóa khoảng trắng thừa
 
             # --- BỘ LỌC TÊN THÔNG MINH (QUAN TRỌNG NHẤT) ---
@@ -1136,6 +1197,7 @@ elif st.session_state.page == "Danh Sách":
 
             edited = st.data_editor(
                 df_list, 
+                column_order=COLS_ORDER,
                 num_rows="dynamic", 
                 use_container_width=True, 
                 hide_index=True,
