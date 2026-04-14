@@ -1306,95 +1306,185 @@ elif st.session_state.page == "Theo Dõi":
         st.caption("Hãy hoàn tất bước 'Quyết Toán' cho khách hàng để đưa họ vào danh sách này.")
 ##lợi nhuận
 elif st.session_state.page == "Lợi Nhuận":
-        st.header("📊 QUẢN LÝ TÀI CHÍNH CHI TIẾT")
+    st.header("📊 QUẢN LÝ TÀI CHÍNH CHI TIẾT")
+    
+    # --- PHẦN 1: HỆ THỐNG 3 TAB CŨ (Dựa trên danh_sach_khach_hang.csv) ---
+    thu_cols = ['Giá Vốn', 'Tiền Đăng Ký', 'Hoa Hồng Bank', 'Hoa Hồng HTX', 'Hoa Hồng', 'Thưởng Chỉ Tiêu']
+    chi_cols = ['Ép Biển', 'Lệ Phí C.An', 'BHTNNS', 'BH VCX', 'Đăng Kiểm', 'HTX', 'Xe Thớt', 'Chi Giới Thiệu', 'Quà Tặng', 'HH-MG', 'Phí Hồ Sơ Bank', 'Phí Giao Xe']
+    file_path = "danh_sach_khach_hang.csv" 
+
+    if os.path.exists(file_path):
+        df_full = pd.read_csv(file_path, encoding='utf-8-sig', on_bad_lines='skip')
+        df_full.columns = [c.strip() for c in df_full.columns]
         
-        thu_cols = ['Giá Vốn', 'Tiền Đăng Ký', 'Hoa Hồng Bank', 'Hoa Hồng HTX', 'Hoa Hồng', 'Thưởng Chỉ Tiêu']
-        chi_cols = ['Ép Biển', 'Lệ Phí C.An', 'BHTNNS', 'BH VCX', 'Đăng Kiểm', 'HTX', 'Xe Thớt', 'Chi Giới Thiệu', 'Quà Tặng', 'HH-MG', 'Phí Hồ Sơ Bank', 'Phí Giao Xe']
-        file_path = "danh_sach_khach_hang.csv" 
+        # 1. Đổi tên cột & Chuẩn hóa
+        col_gia_chuan = 'Giá Sau Ưu Đãi' if 'Giá Sau Ưu Đãi' in df_full.columns else 'Giá Chốt'
+        ten_cot_dk = 'Tiền đăng kí' if 'Tiền đăng kí' in df_full.columns else 'Tiền Đăng Ký'
+        
+        if 'Họ Tên' in df_full.columns:
+            if 'Khách Hàng' in df_full.columns: df_full = df_full.drop(columns=['Khách Hàng'])
+            df_full = df_full.rename(columns={'Họ Tên': 'Khách Hàng'})
+        df_full = df_full.loc[:, ~df_full.columns.duplicated()]
 
-        if os.path.exists(file_path):
-            df_full = pd.read_csv(file_path, encoding='utf-8-sig', on_bad_lines='skip')
-            df_full.columns = [c.strip() for c in df_full.columns]
-            
-            # 1. Định nghĩa biến chung
-            col_gia_chuan = 'Giá Sau Ưu Đãi' if 'Giá Sau Ưu Đãi' in df_full.columns else 'Giá Chốt'
-            ten_cot_dk = 'Tiền đăng kí' if 'Tiền đăng kí' in df_full.columns else 'Tiền Đăng Ký'
-            
-            if 'Họ Tên' in df_full.columns:
-                df_full = df_full.rename(columns={'Họ Tên': 'Khách Hàng'})
+        for c in thu_cols + chi_cols + [col_gia_chuan, 'Giá Vốn', ten_cot_dk]:
+            if c in df_full.columns:
+                df_full[c] = pd.to_numeric(df_full[c], errors='coerce').fillna(0)
+            else:
+                df_full[c] = 0
 
-            # 2. Chuẩn hóa số liệu
-            for c in thu_cols + chi_cols + [col_gia_chuan, 'Giá Vốn', ten_cot_dk]:
-                if c in df_full.columns:
-                    df_full[c] = pd.to_numeric(df_full[c], errors='coerce').fillna(0)
-                else:
-                    df_full[c] = 0
+        df = df_full.copy()
+        if 'Khách Hàng' in df.columns:
+            df = df.drop_duplicates(subset=['Khách Hàng'], keep='last')
 
-            df = df_full.copy()
-            if 'Khách Hàng' in df.columns:
-                df = df.drop_duplicates(subset=['Khách Hàng'], keep='last')
+        tab_thu, tab_chi, tab_tong_ket = st.tabs(["🟢 TỔNG THU", "🔵 TỔNG CHI", "🟡 TỔNG KẾT"])
+        
+        with tab_thu:
+            st.subheader("1. Các khoản thu thêm & Tiền đăng ký")
+            uu_tien = ['Khách Hàng', ten_cot_dk]
+            cac_cot_khac = [c for c in thu_cols if c in df.columns and c not in uu_tien and c not in ['Giá Vốn', 'Giá Sau Ưu Đãi', 'Giá Chốt']]
+            cols_thu_show = uu_tien + cac_cot_khac
+            edited_thu = st.data_editor(
+                df[cols_thu_show], key="editor_thu_v_final", 
+                hide_index=True, use_container_width=True,
+                column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_thu_show if c != 'Khách Hàng'}
+            )
 
-            # --- VẼ GIAO DIỆN ---
-            tab_thu, tab_chi, tab_tong_ket = st.tabs(["🟢 TỔNG THU", "🔵 TỔNG CHI", "🟡 TỔNG KẾT"])
-            
-            with tab_thu:
-                st.subheader("1. Các khoản thu thêm & Tiền đăng ký")
-                uu_tien = ['Khách Hàng', ten_cot_dk]
-                cac_cot_khac = [c for c in thu_cols if c in df.columns and c not in uu_tien and c not in ['Giá Vốn', 'Giá Sau Ưu Đãi', 'Giá Chốt']]
-                cols_thu_show = uu_tien + cac_cot_khac
-                
-                edited_thu = st.data_editor(
-                    df[cols_thu_show], 
-                    key="editor_thu_v_final", 
-                    hide_index=True, use_container_width=True,
-                    column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_thu_show if c != 'Khách Hàng'}
-                )
+        with tab_chi:
+            st.subheader("2. Các khoản chi phí nội bộ")
+            cols_chi_show = ['Khách Hàng'] + [c for c in chi_cols if c in df.columns]
+            edited_chi = st.data_editor(
+                df[cols_chi_show], key="editor_chi_v_final", 
+                hide_index=True, use_container_width=True,
+                column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_chi_show if c != 'Khách Hàng'}
+            )
+        
+        with tab_tong_ket:
+            st.subheader("3. Kết quả kinh doanh thực tế")
+            t_thu_ngoai = edited_thu[[c for c in edited_thu.columns if c != 'Khách Hàng']].sum().sum()
+            t_chi = edited_chi[[c for c in edited_chi.columns if c != 'Khách Hàng']].sum().sum()
+            t_loi_nhuan = t_thu_ngoai - t_chi
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Tổng Doanh Thu", f"{t_thu_ngoai:,.0f} đ")
+            c2.metric("Tổng Chi & Vốn", f"{t_chi:,.0f} đ")
+            c3.metric("Lợi Nhuận Ròng", f"{t_loi_nhuan:,.0f} đ")
 
-            with tab_chi:
-                st.subheader("2. Các khoản chi phí nội bộ")
-                cols_chi_show = ['Khách Hàng'] + [c for c in chi_cols if c in df.columns]
-                edited_chi = st.data_editor(
-                    df[cols_chi_show], 
-                    key="editor_chi_v_final", 
-                    hide_index=True, use_container_width=True,
-                    column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_chi_show if c != 'Khách Hàng'}
-                )
-            
-            with tab_tong_ket:
-                st.subheader("3. Kết quả kinh doanh thực tế")
-                t_gia_chot = df[col_gia_chuan].sum() 
-                t_gia_von = df['Giá Vốn'].sum()
-                t_thu_ngoai = edited_thu[[c for c in edited_thu.columns if c != 'Khách Hàng']].sum().sum()
-                t_chi = edited_chi[[c for c in edited_chi.columns if c != 'Khách Hàng']].sum().sum()
-                t_loi_nhuan = t_thu_ngoai - t_chi
+        st.divider()
+        if st.button("🚀 CẬP NHẬT & LƯU ", type="primary", use_container_width=True):
+            try:
+                for index, row in edited_thu.iterrows():
+                    ten_kh = row['Khách Hàng']
+                    mask = df_full['Khách Hàng'] == ten_kh
+                    for col in edited_thu.columns:
+                        if col in df_full.columns: df_full.loc[mask, col] = row[col]
+                    chi_row = edited_chi[edited_chi['Khách Hàng'] == ten_kh]
+                    if not chi_row.empty:
+                        for col in edited_chi.columns:
+                            if col in df_full.columns: df_full.loc[mask, col] = chi_row.iloc[0][col]
+                df_full.to_csv(file_path, index=False, encoding='utf-8-sig')
+                st.success("✅ Đã cập nhật dữ liệu 3 Tab!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Lỗi khi lưu: {e}")
+    else:
+        st.error(f"❌ Không tìm thấy file: {file_path}")
 
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Tổng Doanh Thu", f"{ t_thu_ngoai:,.0f} đ")
-                c2.metric("Tổng Chi & Vốn", f"{t_chi :,.0f} đ")
-                c3.metric("Lợi Nhuận Ròng", f"{t_loi_nhuan:,.0f} đ", delta=f"{t_loi_nhuan:,.0f} đ")
+    # --- PHẦN 2: BẢNG RIÊNG BIỆT 28 CỘT (Dựa trên detailed_contracts.csv) ---
+    # --- PHẦN 2: BẢNG RIÊNG BIỆT 28 CỘT (Dựa trên detailed_contracts.csv) ---
+    st.divider()
+    st.subheader("📋 QUẢN LÝ HỢP ĐỒNG CHI TIẾT")
+    
+    COLS_28 = [
+        "ID", "Khách Hàng", "SĐT", "Loại Xe", "Số Khung", "Số Máy", 
+        "Ngày Cọc", "Ngày Xuất HĐ", "Ngày Giao Xe", "Tiền Cọc", 
+        "Giá Trị HĐ", "Chương Trình", "Quà Tặng", "Ghi Chú", 
+        "Thu_Đăng Ký", "Thu_Hoa Hồng Bank", "Thu_Hoa Hồng HTX", "Thu_Hoa Hồng", 
+        "Chi_Ép Biển", "Chi_Lệ Phí CA", "Chi_BHTNNS", "Chi_BH VCX", 
+        "Chi_Đăng Kiểm", "Chi_HTX", "Chi_Xe Thớt", "Chi_Giới Thiệu", 
+        "Chi_Quà Tặng", "Lợi Nhuận"
+    ]
+    MASTER_FILE = "detailed_contracts.csv"
+    SOURCE_FILE = "danh_sach_khach_hang.csv"
+    TRACKING_FILE = "data_theo_doi_xe.csv"
+    # 1. Tự động nạp dữ liệu cũ (nếu có)
+    if 'df_master_28' not in st.session_state:
+        if os.path.exists(MASTER_FILE):
+            df_init = pd.read_csv(MASTER_FILE, encoding='utf-8-sig', dtype=str).fillna(0)
+            st.session_state['df_master_28'] = df_init
+        else:
+            st.session_state['df_master_28'] = pd.DataFrame(columns=COLS_28)
 
-            # --- NÚT LƯU (Phải nằm trong IF os.path.exists) ---
-            st.divider()
-            if st.button("🚀 CẬP NHẬT & LƯU TẤT CẢ DỮ LIỆU", type="primary", use_container_width=True):
+    # 2. NÚT ĐỒNG BỘ: Bốc dữ liệu từ file 34 cột sang 28 cột
+    if st.button("🔗 ĐỒNG BỘ DỮ LIỆU", use_container_width=True):
+            if os.path.exists(SOURCE_FILE) and os.path.exists(TRACKING_FILE):
                 try:
-                    for index, row in edited_thu.iterrows():
-                        ten_kh = row['Khách Hàng']
-                        mask = df_full['Khách Hàng'] == ten_kh
-                        # Cập nhật thu
-                        for col in edited_thu.columns:
-                            if col in df_full.columns: df_full.loc[mask, col] = row[col]
-                        # Cập nhật chi
-                        chi_rows = edited_chi[edited_chi['Khách Hàng'] == ten_kh]
-                        if not chi_rows.empty:
-                            chi_row = chi_rows.iloc[0]
-                            for col in edited_chi.columns:
-                                if col in df_full.columns: df_full.loc[mask, col] = chi_row[col]
+                    df_source = pd.read_csv(SOURCE_FILE, encoding='utf-8-sig', dtype=str).fillna("")
+                    df_track = pd.read_csv(TRACKING_FILE, encoding='utf-8-sig', dtype=str).fillna("")
+                    
+                    # Làm sạch tên cột
+                    df_source.columns = df_source.columns.str.strip()
+                    df_track.columns = df_track.columns.str.strip()
+                    df_src = pd.merge(df_source, df_track, on='Khách Hàng', how='outer', suffixes=('_src', '_trk'))
+                    new_data = []
+                    for _, row in df_src.iterrows():
+                        item = {
+                            "ID": f"VF-{datetime.now().strftime('%d%m%H%M')}",
+                            "Khách Hàng": row.get('Khách Hàng', ''),
+                            "SĐT": row.get('SĐT', ''),
+                            
+                            # --- DÒNG QUAN TRỌNG: Bốc cột 'Ngày' sang 'Ngày Cọc' ---
 
-                    df_full.to_csv(file_path, index=False, encoding='utf-8-sig')
-                    st.success("✅ Đã cập nhật dữ liệu tài chính!")
+                            "Ngày Cọc": str(row.get('Ngày CỌC', '')),
+                            "Ngày Xuất HĐ": str(row.get('Ngày XHĐ', '')),
+                            "Ngày Giao Xe": str(row.get('Ngày Giao Xe', '')),
+                            "Loại Xe": row.get('Xe', ''),
+                            "Giá Trị HĐ": row.get('Giá Sau Ưu Đãi', 0),
+                            "Thu_Đăng Ký": row.get('Tiền Đăng Ký', 0),
+                            "Thu_Hoa Hồng Bank": row.get('Hoa Hồng Bank', 0),
+                            "Thu_Hoa Hồng HTX": row.get('Hoa Hồng HTX', 0),
+                            "Thu_Hoa Hồng": row.get('Hoa Hồng', 0),
+                            "Chi_Ép Biển": row.get('Ép Biển', 0),
+                            "Chi_Lệ Phí CA": row.get('Lệ Phí C.An', 0),
+                            "Chi_BHTNNS": row.get('BHTNNS', 0),
+                            "Chi_BH VCX": row.get('BH VCX', 0),
+                            "Chi_Đăng Kiểm": row.get('Đăng Kiểm', 0),
+                            "Chi_HTX": row.get('HTX', 0),
+                            "Chi_Xe Thớt": row.get('Xe Thớt', 0),
+                            "Chi_Giới Thiệu": row.get('Chi Giới Thiệu', 0),
+                            "Chi_Quà Tặng": row.get('Quà Tặng', 0),
+                        }
+                        # Điền các cột còn lại
+                        for c in COLS_28:
+                            if c not in item: 
+                                item[c] = row.get(c, "")
+                        new_data.append(item)
+                    
+                    st.session_state['df_master_28'] = pd.DataFrame(new_data)[COLS_28]
+                    st.success("✅ Đã đồng bộ dữ liệu và NGÀY THÁNG! Nhớ bấm LƯU ở dưới.")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Lỗi khi lưu: {e}")
+                    st.error(f"Lỗi đồng bộ: {e}")
 
-        else: # ELSE này thẳng hàng với IF os.path.exists
-            st.error(f"❌ Không tìm thấy file: {file_path}")
+    # 3. Hiển thị bảng và tính Lợi Nhuận
+    if 'df_master_28' in st.session_state:
+        df_edit = st.session_state['df_master_28'].copy()
+        
+        # Ép kiểu số để tính Lợi Nhuận
+        for c in COLS_28:
+            if any(k in c for k in ["Tiền", "Giá", "Thu_", "Chi_", "Lợi Nhuận"]):
+                df_edit[c] = pd.to_numeric(df_edit[c], errors='coerce').fillna(0)
+        
+        # Công thức tính Lợi Nhuận
+        for idx, r in df_edit.iterrows():
+            t_thu = sum([r[c] for c in COLS_28 if "Thu_" in c])
+            t_chi = sum([r[c] for c in COLS_28 if "Chi_" in c])
+            df_edit.at[idx, 'Lợi Nhuận'] = t_thu - t_chi
+
+        edited_28 = st.data_editor(
+            df_edit, use_container_width=True, hide_index=True,
+            column_config={c: st.column_config.NumberColumn(format="%,d") for c in COLS_28 if c != 'Khách Hàng'},
+            key="v2_28_cols_master"
+        )
+        
+        if st.button("💾 LƯU BẢNG ", type="primary", use_container_width=True):
+            edited_28.to_csv(MASTER_FILE, index=False, encoding='utf-8-sig')
+            st.success("✅ Đã lưu dữ liệu vào detailed_contracts.csv")
