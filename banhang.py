@@ -519,7 +519,6 @@ elif st.session_state.page == "Báo Giá":
             italic_fmt = workbook.add_format({'italic': True, 'align': 'center'})
 
             # --- VẼ GIAO DIỆN EXCEL ---
-            # --- VẼ GIAO DIỆN EXCEL ---
             worksheet.merge_range('A1:C1', 'BẢNG BÁO GIÁ VÀ DỰ TRÙ CHI PHÍ ĐĂNG KÝ XE', header_fmt)
             worksheet.merge_range('A2:C2', f"Ngày {datetime.now().day} tháng {datetime.now().month} năm {datetime.now().year}", italic_fmt)
 
@@ -539,42 +538,22 @@ elif st.session_state.page == "Báo Giá":
             worksheet.write('B6', gia_ban_sau_uu_dai, total_yellow)
             worksheet.write('C6', 'VNĐ', total_yellow)
 
-            # --- MỚI: II. PHẦN CHƯƠNG TRÌNH KHUYẾN MÃI (QUÀ TẶNG) ---
-            row_idx = 7
-            selected_km = st.session_state.get('selected_km_list', [])
-            
-            if selected_km:
-                row_idx += 1
-                worksheet.merge_range(row_idx, 0, row_idx, 2, 'CHƯƠNG TRÌNH KHUYẾN MÃI & QUÀ TẶNG', title_blue)
-                for km in selected_km:
-                    row_idx += 1
-                    worksheet.write(row_idx, 0, '🎁 Quà tặng', label_fmt)
-                    worksheet.write(row_idx, 1, km['label'], label_fmt)
-                    worksheet.write(row_idx, 2, km['value'], money_fmt)
-                
-                row_idx += 1
-                worksheet.write(row_idx, 1, 'TỔNG TRỊ GIÁ QUÀ TẶNG', total_yellow)
-                worksheet.write(row_idx, 2, st.session_state.get('total_km_value', 0), total_yellow)
-                row_idx += 1 # Khoảng cách
+            # II. CÁC KHOẢN LỆ PHÍ
+            worksheet.write('A8', 'STT', title_blue)
+            worksheet.write('B8', 'CÁC KHOẢN LỆ PHÍ', title_blue)
+            worksheet.write('C8', 'THÀNH TIỀN (VNĐ)', title_blue)
 
-            # III. CÁC KHOẢN LỆ PHÍ
-            row_idx += 1
-            worksheet.write(row_idx, 0, 'STT', title_blue)
-            worksheet.write(row_idx, 1, 'CÁC KHOẢN LỆ PHÍ', title_blue)
-            worksheet.write(row_idx, 2, 'THÀNH TIỀN (VNĐ)', title_blue)
-            
-            start_fee_row = row_idx + 1
+            row_idx = 8
             for i, fee in enumerate(selected_fees_data, 1):
-                row_idx += 1
                 worksheet.write(row_idx, 0, i, label_fmt)
                 worksheet.write(row_idx, 1, fee['label'], label_fmt)
                 worksheet.write(row_idx, 2, fee['value'], money_fmt)
+                row_idx += 1
 
-            row_idx += 1
             worksheet.write(row_idx, 1, 'TỔNG CHI PHÍ ĐĂNG KÝ', total_yellow)
             worksheet.write(row_idx, 2, tong_chi_phi_dk, total_yellow)
 
-            # IV. PHƯƠNG THỨC THANH TOÁN
+            # III. PHƯƠNG THỨC THANH TOÁN
             row_idx += 2
             worksheet.merge_range(row_idx, 0, row_idx, 2, 'I. PHƯƠNG THỨC MUA TIỀN MẶT', title_blue)
             worksheet.write(row_idx+1, 0, 'Tiền xe (1)', label_fmt)
@@ -582,10 +561,10 @@ elif st.session_state.page == "Báo Giá":
             worksheet.write(row_idx+2, 0, 'Chi phí đăng ký (2)', label_fmt)
             worksheet.write(row_idx+2, 2, tong_chi_phi_dk, money_fmt)
             worksheet.write(row_idx+3, 1, 'Tổng cộng (1) + (2)', total_yellow)
-            worksheet.write(row_idx+3, 2, (gia_ban_sau_uu_dai + tong_chi_phi_dk), money_fmt) # Sửa lại logic tính tổng nếu cần
+            worksheet.write(row_idx+3, 2, tong_tien_mat, total_yellow)
 
             row_idx += 5
-            worksheet.merge_range(row_idx, 0, row_idx, 3, 'II. PHƯƠNG THỨC MUA QUA NGÂN HÀNG', title_blue)
+            worksheet.merge_range(row_idx, 0, row_idx, 2, 'II. PHƯƠNG THỨC MUA QUA NGÂN HÀNG', title_blue)
             worksheet.write(row_idx+1, 0, f'Ngân hàng hỗ trợ {vay_percent}%', label_fmt)
             worksheet.write(row_idx+1, 2, so_tien_vay, money_fmt)
             worksheet.write(row_idx+2, 0, f'Trả trước xe (1)', label_fmt)
@@ -595,7 +574,7 @@ elif st.session_state.page == "Báo Giá":
             worksheet.write(row_idx+4, 1, 'Tổng số tiền trả trước (1) + (ĐK)', total_yellow)
             worksheet.write(row_idx+4, 2, tong_tra_truoc_nh_, total_yellow)
 
-            worksheet.set_column('A:A', 25); worksheet.set_column('B:B', 45); worksheet.set_column('C:C', 25)
+            worksheet.set_column('A:A', 25); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 20)
             worksheet.hide_gridlines(2)
 
         st.divider()
