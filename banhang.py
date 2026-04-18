@@ -612,7 +612,6 @@ elif st.session_state.page == "Báo Giá":
                 "Họ Tên": q.get('name', 'N/A'),
                 "SĐT": q.get('phone', ''),
                 "CCCD": q.get('cccd', ''),
-                "Email": q.get('mail', ''),
                 "Địa Chỉ": q.get('address', ''),
                 "Xe": q.get('car', ''),
                 "Bản": q.get('ver', ''),
@@ -631,14 +630,8 @@ elif st.session_state.page == "Báo Giá":
 
             # 4. GHI VÀO FILE CSV (Chống nhân bản nhiều hàng)
             new_row_df = pd.DataFrame([final_data])
-            new_row_df.to_csv(
-                DATA_FILE, 
-                mode='a', 
-                index=False, 
-                header=not os.path.exists(DATA_FILE), 
-                encoding='utf-8-sig',
-                quoting=csv.QUOTE_ALL # Bao hết dữ liệu trong dấu "" để Excel không tự đổi định dạng
-            )
+            new_row_df.to_csv(DATA_FILE, mode='a', index=False, header=not os.path.exists(DATA_FILE), encoding='utf-8-sig')
+            
             # 5. GHI VÀO FILE LỢI NHUẬN
             ln_row = {
                 "STT": 0, # Bạn có thể dùng len(df)+1 nếu cần
@@ -1024,55 +1017,68 @@ elif st.session_state.page == "Quyết Toán":
     # --- TẠI TRANG QUYẾT TOÁN ---
     if col_btn1.button("✅ XÁC NHẬN & XEM DANH SÁCH", use_container_width=True, type="primary"):
         try:
-            import csv  
+            import csv
             
-            # --- BƯỚC 0: LẤY DỮ LIỆU KHÁCH HÀNG ---
-            # --- BƯỚC 0: TÍNH TOÁN LẠI BIẾN ---
+            # --- BƯỚC 1: LẤY DỮ LIỆU & CHUẨN HÓA SĐT NGAY LẬP TỨC ---
             q = st.session_state.current_customer
-            ten_kh = q.get('name') or q.get('Họ Tên') or "Khách ẩn danh"
-            status_kh = q.get('status') or q.get('Trạng Thái') or "Cần chăm sóc"
-            
-            # Lấy các biến giá chốt và tổng thu
+            ten_kh = str(q.get('Khách Hàng', q.get('Họ Tên', ''))).strip()
+            # Hàm nội bộ để cứu SĐT (Trị lỗi E+08 và mất số 0)
+            def fix_my_sdt(val):
+                s = str(val).strip()
+                if "E+" in s.upper():
+                    try: s = str(int(float(s)))
+                    except: pass
+                if len(s) == 9 and s.isdigit(): s = "0" + s
+                return s
+
+            sdt_kh = fix_my_sdt(q.get('SĐT') or q.get('phone') or "")
             v_gia_chot_kh = gia_chot_kh if 'gia_chot_kh' in locals() else 0
             v_tong_kh_dong = tong_kh_thanh_toan if 'tong_kh_thanh_toan' in locals() else 0
             
-            # --- ĐOẠN QUAN TRỌNG NHẤT ĐỂ LẤY TIỀN ĐĂNG KÝ ---
-            # Dùng đúng công thức tạo Key mà bạn đã viết ở phần giao diện
-            key_check = f"ck_dk_logic_{val_dk_shared}"
-            key_val = f"val_dk_logic_{val_dk_shared}"
-            
-            # Lấy giá trị trực tiếp từ bộ nhớ Session
+            # Lấy tiền đăng ký từ session
             is_checked = st.session_state.get("ck_dk_final", False)
-            so_tien_nhap = st.session_state.get("val_dk_final", 0)
-            v_tien_dk_tu_o_nhap = st.session_state.get(key_val, 0)
-            
-            # Quyết định số tiền ghi vào file
+            v_tien_dk_tu_o_nhap = st.session_state.get(f"val_dk_logic_{val_dk_shared}", 0)
             tien_dk_de_luu = v_tien_dk_tu_o_nhap if is_checked else 0
 
-            # --- 1. CẬP NHẬT FILE TỔNG (DATA_FILE) ---
+            # --- BƯỚC 2: CẬP NHẬT FILE TỔNG (DATA_FILE) ---
             if os.path.exists(DATA_FILE):
-                df_all = pd.read_csv(DATA_FILE, encoding='utf-8-sig', on_bad_lines='skip')
-                if ten_kh in df_all['Họ Tên'].values:
-                    mask = df_all['Họ Tên'] == ten_kh
+                df_all = pd.read_csv(DATA_FILE, encoding='utf-8-sig', dtype=str).fillna("")
+                # CỰC QUAN TRỌNG: dtype=str để không bị mất số 0 khi đọc
+                df_all.columns = df_all.columns.str.strip()
+
+                # Đồng bộ tên cột khách hàng
+                if 'Khách Hàng' not in df_all.columns and 'Họ Tên' in df_all.columns:
+                    df_all['Khách Hàng'] = df_all['Họ Tên']
+                elif 'Họ Tên' not in df_all.columns and 'Khách Hàng' in df_all.columns:
+                    df_all['Họ Tên'] = df_all['Khách Hàng']
+                if 'Khách Hàng' in df_all.columns and ten_kh in df_all['Khách Hàng'].values:
+                    mask = df_all['Khách Hàng'] == ten_kh
                     df_all.loc[mask, 'Trạng Thái'] = "Đã Quyết Toán"
+                    df_all.loc[mask, 'SĐT'] = sdt_kh # Ghi đè SĐT đã chuẩn hóa
                     df_all.loc[mask, 'Giá Sau Ưu Đãi'] = v_gia_chot_kh
                     df_all.loc[mask, 'Tổng Tiền'] = v_tong_kh_dong
                     df_all.loc[mask, 'Ngày QT'] = datetime.now().strftime("%d/%m/%Y")
                     df_all.to_csv(DATA_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
 
+            # --- BƯỚC 3: GHI FILE THEO DÕI (TRACKING_FILE) ---
             # --- 2. GHI VÀO FILE THEO DÕI (TRACKING_FILE) ---
             tracking_row = {
                 "Khách Hàng": ten_kh, 
+                "SĐT": sdt_kh,
                 "Loại Xe": f"{q.get('Xe') or q.get('car') or 'Xe'} {q.get('Bản') or q.get('ver') or ''}",
                 "Ngày CỌC": datetime.now().strftime("%d/%m/%Y"),
-                "Ngày XHĐ": "", "Ngày Giao Xe": "", 
                 "Số Tiền HĐ": st.session_state.get('nho_gia_chot', 0),
                 "Số Tiền Thực Thu": v_tong_kh_dong,
                 "Số Tiền Chốt Khách": v_gia_chot_kh,
+                
+                # --- CHỖ NÀY LÀ MẤU CHỐT: Lấy từ ô nhập liệu đại ca vừa gõ ---
+                "Chương Trình": st.session_state.get('val_ctrinh', ""), 
+                "Quà Tặng": st.session_state.get('val_quatang', ""),
+                # -----------------------------------------------------------
+                
                 "Trạng Thái Giao": "Chờ giao",
-                "Ghi Chú": status_kh
+                "Ghi Chú": ""
             }
-            
             if os.path.exists(TRACKING_FILE):
                 df_track = pd.read_csv(TRACKING_FILE, encoding='utf-8-sig', on_bad_lines='skip')
                 df_track = df_track[df_track['Khách Hàng'] != ten_kh] 
@@ -1107,13 +1113,13 @@ elif st.session_state.page == "Quyết Toán":
             # Ghi đè lại file Lợi nhuận
             df_ln.to_csv(LN_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
 
-            st.success(f"🎉 Đã chốt hồ sơ {ten_kh}! (Tiền ĐK: {tien_dk_de_luu:,.0f} đ)")
+            st.success(f"🎉 Chốt xong! SĐT: {sdt_kh}")
             time.sleep(1)
             st.session_state.page = "Theo Dõi"
             st.rerun()
 
         except Exception as e:
-            st.error(f"Lỗi lưu dữ liệu: {e}")
+            st.error(f"Lỗi: {e}")
             
     
 # --- 7. TRANG DANH SÁCH ---
@@ -1125,8 +1131,13 @@ elif st.session_state.page == "Danh Sách":
             # 1. Đọc dữ liệu từ file CSV
             df_list = pd.read_csv(DATA_FILE, encoding='utf-8-sig', dtype={'SĐT': str, 'CCCD': str, 'Số điện thoại': str})
             df_list.columns = [c.strip() for c in df_list.columns] # Xóa khoảng trắng thừa
+            # FIX SĐT bị dấu phẩy + mất số 0
+            if 'SĐT' in df_list.columns:
+                df_list['SĐT'] = df_list['SĐT'].astype(str).str.replace(',', '')
 
-            # --- BỘ LỌC TÊN THÔNG MINH (QUAN TRỌNG NHẤT) ---
+            if 'Số điện thoại' in df_list.columns:
+                df_list['Số điện thoại'] = df_list['Số điện thoại'].astype(str).str.replace(',', '')
+                        # --- BỘ LỌC TÊN THÔNG MINH (QUAN TRỌNG NHẤT) ---
             # Nếu file có 'Khách Hàng' mà không có 'Họ Tên', hãy tạo ra cột 'Họ Tên' để các hàm cũ không lỗi
             if 'Khách Hàng' in df_list.columns and 'Họ Tên' not in df_list.columns:
                 df_list['Họ Tên'] = df_list['Khách Hàng']
@@ -1174,13 +1185,20 @@ elif st.session_state.page == "Danh Sách":
                 if c in df_list.columns:
                     conf_cols[c] = st.column_config.NumberColumn(format="%,d")
 
+            if 'SĐT' in df_list.columns:
+                df_list['SĐT'] = df_list['SĐT'].astype(str)
+
             edited = st.data_editor(
                 df_list, 
                 column_order=COLS_ORDER,
                 num_rows="dynamic", 
                 use_container_width=True, 
                 hide_index=True,
-                column_config=conf_cols
+                column_config={
+                    **conf_cols,
+                    "SĐT": st.column_config.TextColumn(),
+                    "Số điện thoại": st.column_config.TextColumn()
+                }
             )
             
             if st.button("💾 CẬP NHẬT THAY ĐỔI", use_container_width=True):
@@ -1195,95 +1213,93 @@ elif st.session_state.page == "Danh Sách":
 elif st.session_state.page == "Theo Dõi":
     st.markdown("### 📋 QUẢN LÝ XE CHỜ GIAO & BÀN GIAO")
     
-    # 1. KHAI BÁO FILE RIÊNG (Phải khớp với file bạn lưu ở trang Quyết toán)
     TRACKING_FILE = "data_theo_doi_xe.csv" 
 
     if os.path.exists(TRACKING_FILE):
-    # 1. Sử dụng try-except để bắt lỗi và on_bad_lines để bỏ qua dòng hỏng
         try:
-            df_follow = pd.read_csv(
-                TRACKING_FILE, 
-                encoding='utf-8-sig', 
-                on_bad_lines='skip'  # <-- Thêm dòng này để bỏ qua các dòng "lệch cột"
-            )
+            # 1. Đọc file với dtype=str để không mất số 0 điện thoại
+            df_follow = pd.read_csv(TRACKING_FILE, encoding='utf-8-sig', dtype=str).fillna("")
             
-            # 2. Xử lý ngày tháng như cũ
+            # --- BƯỚC QUAN TRỌNG: TỰ ĐỘNG BÙ CỘT THIẾU ---
+            # Danh sách tất cả các trường đại ca cần (để không bị mất trường)
+            all_cols = [
+                "Khách Hàng", "SĐT", "Loại Xe", # Đưa lên đầu cho dễ nhìn
+                "Ngày CỌC", "Ngày XHĐ", "Ngày Giao Xe", 
+                "Số Tiền HĐ", "Số Tiền Thực Thu", "Số Tiền Chốt Khách" 
+                 ,"Trạng Thái Giao", "Ghi Chú"
+            ]
+            for c in all_cols:
+                if c not in df_follow.columns:
+                    df_follow[c] = "" # Nếu thiếu cột nào thì tự tạo cột trống đó
+
+            # 2. Xử lý ngày tháng để hiện lịch chọn
             for col in ["Ngày CỌC", "Ngày XHĐ", "Ngày Giao Xe"]:
-                if col in df_follow.columns:
-                    df_follow[col] = pd.to_datetime(df_follow[col], errors='coerce', dayfirst=True)
+                df_follow[col] = pd.to_datetime(df_follow[col], errors='coerce', dayfirst=True)
                     
         except Exception as e:
-            st.error(f"⚠️ Cấu trúc file dữ liệu bị lỗi: {e}")
-        # Nếu lỗi quá nặng, cho phép người dùng biết để xử lý file thủ công
-        # 2. THỐNG KÊ NHANH (Lấy từ file Theo Dõi)
-        da_giao = len(df_follow[df_follow['Trạng Thái Giao'] == "Đã giao"])
-        cho_giao = len(df_follow[df_follow['Trạng Thái Giao'] == "Chờ giao"])
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🔵 TỔNG XE CHỐT", f"{len(df_follow)}")
-        c2.info(f"🟢 ĐÃ GIAO: **{da_giao}**")
-        c3.warning(f"🟡 CHỜ GIAO: **{cho_giao}**")
+            st.error(f"⚠️ Lỗi cấu hình file: {e}")
+            df_follow = pd.DataFrame()
 
-        st.divider()
+        # 2. THỐNG KÊ
+        if not df_follow.empty:
+            da_giao = len(df_follow[df_follow['Trạng Thái Giao'] == "Đã giao"])
+            cho_giao = len(df_follow[df_follow['Trạng Thái Giao'] == "Chờ giao"])
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("🔵 TỔNG XE", f"{len(df_follow)}")
+            c2.info(f"🟢 ĐÃ GIAO: **{da_giao}**")
+            c3.warning(f"🟡 CHỜ GIAO: **{cho_giao}**")
 
-        # 3. HIỂN THỊ BẢNG THEO DÕI (Dạng Editor để gõ được Ngày, Ghi chú)
-        st.markdown("#### 📑 Chi tiết danh sách xe bàn giao")
-        
-        # Cấu hình các cột đặc biệt (Selectbox cho Trạng thái, Number cho tiền)
-        edited_df = st.data_editor(
-            df_follow,
-            use_container_width=True,
-            hide_index=False,
-            column_config={
-                # CẤU HÌNH CHỌN NGÀY BẰNG LỊCH
-                "Ngày XHĐ": st.column_config.DateColumn(
-                    "Ngày XHĐ", format="DD/MM/YYYY"
-                ),
-                "Ngày Giao Xe": st.column_config.DateColumn(
-                    "Ngày Giao Xe", format="DD/MM/YYYY"
-                ),
-                "Ngày CỌC": st.column_config.DateColumn(
-                    "Ngày CỌC", format="DD/MM/YYYY"
-                ),
-                # Các cấu hình cũ giữ nguyên
+            st.divider()
+
+            # 3. HIỂN THỊ BẢNG
+            st.markdown("#### 📑 Chi tiết danh sách xe bàn giao")
+            
+            # Cấu hình hiển thị cột
+            conf_follow = {
+                "Khách Hàng": st.column_config.TextColumn("Khách Hàng", pinned=True, width="medium"),
+                "SĐT": st.column_config.TextColumn("Số Điện Thoại"),
+                "Ngày XHĐ": st.column_config.DateColumn("Ngày XHĐ", format="DD/MM/YYYY"),
+                "Ngày Giao Xe": st.column_config.DateColumn("Ngày Giao Xe", format="DD/MM/YYYY"),
+                "Ngày CỌC": st.column_config.DateColumn("Ngày CỌC", format="DD/MM/YYYY"),
                 "Trạng Thái Giao": st.column_config.SelectboxColumn(
-                    "Trạng Thái Giao", options=["Chờ giao", "Đã giao"], required=True
+                    "Trạng Thái", options=["Chờ giao", "Đã giao"], required=True
                 ),
                 "Ghi Chú": st.column_config.SelectboxColumn(
                     "Ghi Chú", options=["Đã cọc", "Tiền mặt", "Cần chăm sóc", "Hủy cọc", "Chờ đăng ký"]
                 ),
-                "Số Tiền HĐ": st.column_config.NumberColumn(format="%,d"),
-                "Số Tiền Thực Thu": st.column_config.NumberColumn(format="%,d"),
-                "Số Tiền Chốt Khách": st.column_config.NumberColumn(format="%,d"),
             }
-        )
+            # Định dạng các cột tiền
+            for c in ["Số Tiền HĐ", "Số Tiền Thực Thu", "Số Tiền Chốt Khách"]:
+                conf_follow[c] = st.column_config.NumberColumn(format="%,d")
 
-        # 4. NÚT LƯU CẬP NHẬT (Lưu những gì bạn vừa sửa trong bảng)
-        if st.button("💾 CẬP NHẬT THAY ĐỔI TRÊN BẢNG", type="primary", use_container_width=True):
-            try:
-                # Sao chép để không làm hỏng dữ liệu đang hiển thị
-                df_save = edited_df.copy()
+            edited_df = st.data_editor(
+                df_follow,
+                column_order=all_cols, # Ép hiện đúng thứ tự các cột
+                use_container_width=True,
+                hide_index=True,
+                column_config=conf_follow,
+                key="editor_theo_doi_final"
+            )
 
-                # Định dạng lại ngày tháng thành chữ trước khi ghi vào CSV
-                for col in ["Ngày CỌC", "Ngày XHĐ", "Ngày Giao Xe"]:
-                    if col in df_save.columns:
-                        # Chuyển về dạng ngày/tháng/năm
+            # 4. NÚT LƯU
+            if st.button("💾 CẬP NHẬT THAY ĐỔI", type="primary", use_container_width=True):
+                try:
+                    import csv
+                    df_save = edited_df.copy()
+                    # Chuyển ngày về dạng chữ trước khi lưu
+                    for col in ["Ngày CỌC", "Ngày XHĐ", "Ngày Giao Xe"]:
                         df_save[col] = pd.to_datetime(df_save[col]).dt.strftime('%d/%m/%Y')
-                        # Xử lý các ô trống (NaT) thành chuỗi rỗng
                         df_save[col] = df_save[col].replace('NaT', '')
-
-                df_save.to_csv(TRACKING_FILE, index=False, encoding='utf-8-sig')
-                st.success("✅ Đã cập nhật ngày tháng và thông tin thành công!")
-                time.sleep(1)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Lỗi khi lưu cập nhật: {e}")
-                
+                    
+                    # QUAN TRỌNG: Lưu có quoting để bảo vệ số 0 SĐT
+                    df_save.to_csv(TRACKING_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
+                    st.success("✅ Đã cập nhật thành công!")
+                    time.sleep(1); st.rerun()
+                except Exception as e:
+                    st.error(f"Lỗi khi lưu: {e}")
     else:
-        # Đoạn này xử lý khi chưa có file (Thụt lề đúng 1 Tab so với 'if os.path.exists')
-        st.info("Chưa có hồ sơ nào được chốt sang bảng Theo Dõi.")
-        st.caption("Hãy hoàn tất bước 'Quyết Toán' cho khách hàng để đưa họ vào danh sách này.")
-##lợi nhuận
+        st.info("Chưa có hồ sơ nào trong danh sách Theo Dõi.")
 elif st.session_state.page == "Lợi Nhuận":
     st.header("📊 QUẢN LÝ TÀI CHÍNH CHI TIẾT")
     
@@ -1394,59 +1410,99 @@ elif st.session_state.page == "Lợi Nhuận":
 
     # 2. NÚT ĐỒNG BỘ: Bốc dữ liệu từ file 34 cột sang 28 cột
     if st.button("🔗 ĐỒNG BỘ DỮ LIỆU", use_container_width=True):
-            if os.path.exists(SOURCE_FILE) and os.path.exists(TRACKING_FILE):
-                try:
-                    df_source = pd.read_csv(SOURCE_FILE, encoding='utf-8-sig', dtype=str).fillna("")
-                    df_track = pd.read_csv(TRACKING_FILE, encoding='utf-8-sig', dtype=str).fillna("")
-                    
-                    # Làm sạch tên cột
-                    df_source.columns = df_source.columns.str.strip()
-                    df_track.columns = df_track.columns.str.strip()
-                    df_src = pd.merge(df_source, df_track, on='Khách Hàng', how='outer', suffixes=('_src', '_trk'))
-                    new_data = []
-                    for _, row in df_src.iterrows():
-                        item = {
-                            "ID": f"VF-{datetime.now().strftime('%d%m%H%M')}",
-                            "Khách Hàng": row.get('Khách Hàng', ''),
-                            "SĐT": row.get('SĐT', ''),
-                            
-                            # --- DÒNG QUAN TRỌNG: Bốc cột 'Ngày' sang 'Ngày Cọc' ---
+        if os.path.exists(SOURCE_FILE) and os.path.exists(TRACKING_FILE):
+            try:
+                # 1. Đọc dữ liệu ép kiểu Chữ (String) để không mất số 0
+                df_source = pd.read_csv(SOURCE_FILE, encoding='utf-8-sig', dtype=str).fillna("")
+                df_track = pd.read_csv(TRACKING_FILE, encoding='utf-8-sig', dtype=str).fillna("")
+                if 'SĐT' in df_source.columns:
+                    df_source['SĐT'] = df_source['SĐT'].astype(str).str.replace(',', '')
 
-                            "Ngày Cọc": str(row.get('Ngày CỌC', '')),
-                            "Ngày Xuất HĐ": str(row.get('Ngày XHĐ', '')),
-                            "Ngày Giao Xe": str(row.get('Ngày Giao Xe', '')),
-                            "Loại Xe": row.get('Xe', ''),
-                            "Giá Trị HĐ": row.get('Giá Sau Ưu Đãi', 0),
-                            "Thu_Đăng Ký": row.get('Tiền Đăng Ký', 0),
-                            "Thu_Hoa Hồng Bank": row.get('Hoa Hồng Bank', 0),
-                            "Thu_Hoa Hồng HTX": row.get('Hoa Hồng HTX', 0),
-                            "Thu_Hoa Hồng": row.get('Hoa Hồng', 0),
-                            "Chi_Ép Biển": row.get('Ép Biển', 0),
-                            "Chi_Lệ Phí CA": row.get('Lệ Phí C.An', 0),
-                            "Chi_BHTNNS": row.get('BHTNNS', 0),
-                            "Chi_BH VCX": row.get('BH VCX', 0),
-                            "Chi_Đăng Kiểm": row.get('Đăng Kiểm', 0),
-                            "Chi_HTX": row.get('HTX', 0),
-                            "Chi_Xe Thớt": row.get('Xe Thớt', 0),
-                            "Chi_Giới Thiệu": row.get('Chi Giới Thiệu', 0),
-                            "Chi_Quà Tặng": row.get('Quà Tặng', 0),
-                        }
-                        # Điền các cột còn lại
-                        for c in COLS_28:
-                            if c not in item: 
-                                item[c] = row.get(c, "")
-                        new_data.append(item)
+                if 'SĐT' in df_track.columns:
+                    df_track['SĐT'] = df_track['SĐT'].astype(str).str.replace(',', '')
+                # 2. Làm sạch tên cột
+                df_source.columns = df_source.columns.str.strip()
+                df_track.columns = df_track.columns.str.strip()
+
+                # 3. Đồng bộ cột Khách Hàng để khớp dữ liệu
+                if 'Họ Tên' in df_source.columns:
+                    df_source['Khách Hàng'] = df_source['Họ Tên']
+                
+                # Merge 2 bảng lại làm 1
+                df_src = pd.merge(df_source, df_track, on='Khách Hàng', how='outer', suffixes=('_src', '_trk'))
+                
+                new_data = []
+    
+                # 1. Hàm vá SĐT cực mạnh (Trị mọi loại E+08, mất số 0)
+                def clean_sdt_final(val):
+                    s = str(val).strip().replace(',', '').split('.')[0]
+                    if not s or s.lower() == "nan": return ""
+                    if "E+" in s.upper():
+                        try: s = str(int(float(s)))
+                        except: pass
+                    if len(s) == 9 and s.isdigit():
+                        s = "0" + s
+                    return s
+
+                for _, row in df_src.iterrows():
+                    ten_chuan = str(row.get('Khách Hàng', '')).strip()
+                    if not ten_chuan: ten_chuan = str(row.get('Họ Tên', '')).strip()
+                    if not ten_chuan: continue # Bỏ qua dòng trống
+
+                    # Lấy SĐT từ bất cứ nguồn nào có thể
+                    sdt_final = clean_sdt_final(row.get('SĐT_src', row.get('SĐT_trk', row.get('SĐT', ''))))
+                                # TẠO DÒNG 28 CỘT (Chỉ chứa dữ liệu chữ/số)
+                    item = {
+                        "ID": f"VF-{datetime.now().strftime('%d%m%H%M')}",
+                        "Khách Hàng": ten_chuan,
+                        "SĐT": str(sdt_final), # <--- Giờ nó là Chữ chuẩn rồi
+                        "Loại Xe": row.get('Xe', row.get('Loại Xe', '')),
+                        "Số Khung": row.get('Số Khung', ''),
+                        "Số Máy": row.get('Số Máy', ''),
+                        "Ngày Cọc": row.get('Ngày', row.get('Ngày CỌC', '')),
+                        "Ngày Xuất HĐ": row.get('Ngày XHĐ', ''),
+                        "Ngày Giao Xe": row.get('Ngày Giao Xe', ''),
+                        "Giá Trị HĐ": row.get('Giá Sau Ưu Đãi', row.get('Số Tiền Chốt Khách', 0)),
+                        "Thu_Đăng Ký": row.get('Tiền Đăng Ký', 0),
+                        "Thu_Hoa Hồng Bank": row.get('Hoa Hồng Bank', 0),
+                        "Thu_Hoa Hồng HTX": row.get('Hoa Hồng HTX', 0),
+                        "Thu_Hoa Hồng": row.get('Hoa Hồng', 0),
+                        "Chi_Ép Biển": row.get('Ép Biển', 0),
+                        "Chi_Lệ Phí CA": row.get('Lệ Phí C.An', 0),
+                        "Chi_BHTNNS": row.get('BHTNNS', 0),
+                        "Chi_BH VCX": row.get('BH VCX', 0),
+                        "Chi_Đăng Kiểm": row.get('Đăng Kiểm', 0),
+                        "Chi_HTX": row.get('HTX', 0),
+                        "Chi_Xe Thớt": row.get('Xe Thớt', 0),
+                        "Chi_Giới Thiệu": row.get('Chi Giới Thiệu', 0),
+                        "Chi_Quà Tặng": row.get('Quà Tặng', 0),
+                    }
                     
-                    st.session_state['df_master_28'] = pd.DataFrame(new_data)[COLS_28]
-                    st.success("✅ Đã đồng bộ dữ liệu và NGÀY THÁNG! Nhớ bấm LƯU ở dưới.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Lỗi đồng bộ: {e}")
+                    # Điền nốt các cột còn lại trong COLS_28 nếu còn thiếu
+                    for c in COLS_28:
+                        if c not in item:
+                            val = row.get(c, 0)
+                            # Nếu là cột tiền thì ép về số nguyên
+                            if any(k in c for k in ["Thu_", "Chi_", "Giá", "Tiền", "Lợi Nhuận"]):
+                                try: item[c] = int(float(str(val).replace(',', '')))
+                                except: item[c] = 0
+                            else:
+                                item[c] = val
+
+                    new_data.append(item)
+                
+                # Xuất kết quả
+                df_final = pd.DataFrame(new_data)
+                st.session_state['df_master_28'] = df_final[COLS_28]
+                st.success("✅ Đã đồng bộ sạch sẽ! Nhớ bấm LƯU ở dưới nhé."); st.rerun()
+                
+            except Exception as e:
+                st.error(f"Lỗi đồng bộ: {e}")
 
     # 3. Hiển thị bảng và tính Lợi Nhuận
     if 'df_master_28' in st.session_state:
         df_edit = st.session_state['df_master_28'].copy()
-        
+        df_edit['SĐT'] = df_edit['SĐT'].astype(str)
         # Ép kiểu số để tính Lợi Nhuận
         for c in COLS_28:
             if any(k in c for k in ["Tiền", "Giá", "Thu_", "Chi_", "Lợi Nhuận"]):
@@ -1460,8 +1516,11 @@ elif st.session_state.page == "Lợi Nhuận":
 
         edited_28 = st.data_editor(
             df_edit, use_container_width=True, hide_index=True,
-            column_config={c: st.column_config.NumberColumn(format="%,d") for c in COLS_28 if c != 'Khách Hàng'},
-            key="v2_28_cols_master"
+            column_config={
+                **{c: st.column_config.NumberColumn(format="%,d") 
+                for c in COLS_28 if c not in ['Khách Hàng', 'SĐT']},
+                "SĐT": st.column_config.TextColumn()
+            }
         )
         
         if st.button("💾 LƯU BẢNG ", type="primary", use_container_width=True):
