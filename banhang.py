@@ -1131,6 +1131,30 @@ elif st.session_state.page == "Danh Sách":
             # 1. Đọc dữ liệu từ file CSV
             df_list = pd.read_csv(DATA_FILE, encoding='utf-8-sig', dtype={'SĐT': str, 'CCCD': str, 'Số điện thoại': str})
             df_list.columns = [c.strip() for c in df_list.columns] # Xóa khoảng trắng thừa
+            # ===== FIX SĐT CHUẨN =====
+            def fix_sdt_vn(val):
+                s = str(val).strip().replace(',', '').split('.')[0]
+                
+                if not s or s.lower() == "nan":
+                    return ""
+                
+                if "E+" in s.upper():
+                    try:
+                        s = str(int(float(s)))
+                    except:
+                        pass
+                
+                if len(s) == 9 and s.isdigit():
+                    s = "0" + s
+
+                return s
+
+            # áp dụng fix
+            if 'SĐT' in df_list.columns:
+                df_list['SĐT'] = df_list['SĐT'].apply(fix_sdt_vn)
+
+            if 'Số điện thoại' in df_list.columns:
+                df_list['Số điện thoại'] = df_list['Số điện thoại'].apply(fix_sdt_vn)
             # FIX SĐT bị dấu phẩy + mất số 0
             if 'SĐT' in df_list.columns:
                 df_list['SĐT'] = df_list['SĐT'].astype(str).str.replace(',', '')
@@ -1202,8 +1226,16 @@ elif st.session_state.page == "Danh Sách":
             )
             
             if st.button("💾 CẬP NHẬT THAY ĐỔI", use_container_width=True):
+
+                if 'SĐT' in edited.columns:
+                    edited['SĐT'] = edited['SĐT'].apply(fix_sdt_vn)
+
+                if 'Số điện thoại' in edited.columns:
+                    edited['Số điện thoại'] = edited['Số điện thoại'].apply(fix_sdt_vn)
+
                 edited.to_csv(DATA_FILE, index=False, encoding='utf-8-sig')
-                st.success("Đã cập nhật!"); st.rerun()
+                st.success("Đã cập nhật!")
+                st.rerun()
 
         except Exception as e:
             st.error(f"Lỗi hiển thị danh sách: {e}")
