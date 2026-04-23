@@ -1435,123 +1435,110 @@ elif st.session_state.page == "Theo Dõi":
 elif st.session_state.page == "Lợi Nhuận":
     st.header("📊 QUẢN LÝ TÀI CHÍNH CHI TIẾT")
     
-    # --- 1. CẤU HÌNH CỘT ---
+    # 1. CẤU HÌNH CỘT
     thu_cols = ['Giá Vốn', 'Tiền Đăng Ký', 'Hoa Hồng Bank', 'Hoa Hồng HTX', 'Hoa Hồng', 'Thưởng Chỉ Tiêu']
-    chi_cols = ['Ép Biển', 'Lệ Phí C.An', 'BHTNNS', 'BH VCX', 'Đăng Kiểm', 'HTX', 'Xe Thớt', 'Chi Giới Thiệu', 'Quà Tặng', 'HH-MG', 'Phí Hồ Sơ Bank', 'Phí Giao Xe']
-    file_path = DATA_FILE # Sử dụng biến DATA_FILE đã khai báo ở đầu app
+    chi_cols = ['Ép Biển', 'Lệ Phí C.An', 'BHTNNS', 'BH VCX', 'Đăng Kiểm', 'HTX', 'Xe Thớt', 'Chi Giới Thiệu', 'HH-MG', 'Phí Hồ Sơ Bank', 'Phí Giao Xe']
+    file_path = DATA_FILE 
 
     if os.path.exists(file_path):
-        # 1. Đọc dữ liệu (KHÔNG fillna("0") ngay lập tức)
-        df_full = pd.read_csv(file_path, encoding='utf-8-sig', dtype=str)
+        # --- BƯỚC 1: ĐỌC VÀ CHUẨN HÓA GỐC ---
+        df_full = pd.read_csv(file_path, encoding='utf-8-sig', dtype=str).fillna("")
         df_full.columns = [c.strip() for c in df_full.columns]
-        
-        # 2. Xử lý tên cột Khách Hàng
-        if 'Họ Tên' in df_full.columns:
-            if 'Khách Hàng' in df_full.columns: df_full = df_full.drop(columns=['Khách Hàng'])
+        df_full = df_full.loc[:, ~df_full.columns.duplicated()] # Xóa cột trùng tên gây lỗi Index
+
+        if 'Họ Tên' in df_full.columns and 'Khách Hàng' not in df_full.columns:
             df_full = df_full.rename(columns={'Họ Tên': 'Khách Hàng'})
 
-        # 3. DỌN RÁC: Xóa bỏ dòng có tên bị trống hoặc tên là "0", "nan", "none"
-        df_full = df_full.dropna(subset=['Khách Hàng']) # Xóa dòng null
+        # Làm sạch dữ liệu rác
         df_full['Khách Hàng'] = df_full['Khách Hàng'].astype(str).str.strip()
-        # Lọc bỏ tất cả các loại tên xàm
         df_full = df_full[~df_full['Khách Hàng'].str.lower().isin(['', 'nan', 'none', '0', 'null'])]
 
-        # 4. Bây giờ mới ép kiểu số và fillna(0) cho các cột tiền
-        ten_cot_dk = 'Tiền đăng kí' if 'Tiền đăng kí' in df_full.columns else 'Tiền Đăng Ký'
-        for c in thu_cols + chi_cols + [ten_cot_dk]:
-            if c in df_full.columns:
-                df_full[c] = pd.to_numeric(df_full[c].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-        # --- 2. LOGIC LỌC TÀI CHÍNH CỰC CHUẨN ---
-        # --- 2. LOGIC LỌC TÀI CHÍNH CẢI TIẾN ---
-        # 1. Đọc danh sách khách đang ở kho Chăm Sóc để loại trừ
+        # --- BƯỚC 2: LOẠI TRỪ KHÁCH TRONG KHO CHĂM SÓC ---
         list_sdt_cham_soc = []
         if os.path.exists(CS_FILE):
-            df_cs_check = pd.read_csv(CS_FILE, dtype=str)
+            df_cs_check = pd.read_csv(CS_FILE, dtype=str).fillna("")
             if 'SĐT' in df_cs_check.columns:
                 list_sdt_cham_soc = df_cs_check['SĐT'].tolist()
 
-        # 2. Chuẩn hóa dữ liệu trong df_full
-        df_full['Ghi Chú'] = df_full['Ghi Chú'].astype(str).str.strip().str.lower()
-        df_full['Trạng Thái'] = df_full['Trạng Thái'].astype(str).str.strip().str.lower()
-
-        # 3. Định nghĩa các mặt xích lọc
+        # --- BƯỚC 3: LOGIC LỌC TÀI CHÍNH ---
+        df_full['Trạng Thái'] = df_full['Trạng Thái'].astype(str).str.lower().str.strip()
+        df_full['Ghi Chú'] = df_full['Ghi Chú'].astype(str).str.lower().str.strip()
+        
+        mask_quyet_toan = df_full['Trạng Thái'].isin(['đã quyết toán', 'da quyet toan'])
         dk_hop_le = ["tiền mặt", "đã cọc", "ck", "chuyển khoản", "cọc"]
         mask_ghi_chu = df_full['Ghi Chú'].apply(lambda x: any(k in str(x) for k in dk_hop_le))
-        mask_quyet_toan = df_full['Trạng Thái'].isin(['đã quyết toán', 'da quyet toan'])
         
-        # KIỂM TRA TRẠNG THÁI GIAO
+        mask_loai_bo = False
         if 'Trạng Thái Giao' in df_full.columns:
-            df_full['Trạng Thái Giao'] = df_full['Trạng Thái Giao'].astype(str).str.strip().str.lower()
-            mask_loai_bo = df_full['Trạng Thái Giao'].isin(["cần chăm sóc", "hủy cọc"])
-        else:
-            mask_loai_bo = pd.Series([False]*len(df_full))
+            mask_loai_bo = df_full['Trạng Thái Giao'].astype(str).str.lower().isin(["cần chăm sóc", "hủy cọc"])
 
-        # 4. BƯỚC QUAN TRỌNG: Loại bỏ khách nếu SĐT nằm trong file Chăm Sóc
-        mask_trong_kho_cs = df_full['SĐT'].isin(list_sdt_cham_soc)
-
-        # 5. TẠO BẢNG TÀI CHÍNH (Kết hợp tất cả điều kiện)
+        # Tạo bảng tài chính (Loại trừ người trong list_sdt_cham_soc)
         df_tai_chinh = df_full[
-            (mask_quyet_toan | mask_ghi_chu) &  # Hoặc quyết toán, hoặc đã cọc
-            ~mask_loai_bo &                     # Không phải trạng thái cần chăm sóc
-            ~mask_trong_kho_cs                  # Tuyệt đối không nằm trong file Chăm Sóc
+            (mask_quyet_toan | mask_ghi_chu) & 
+            ~mask_loai_bo & 
+            ~df_full['SĐT'].isin(list_sdt_cham_soc)
         ].copy()
 
-        # Loại bỏ trùng (lấy dòng mới nhất)
-        df_tai_chinh = df_tai_chinh.drop_duplicates(subset=['SĐT'], keep='last')
+        # Ép kiểu số để hiển thị và tính toán
+        ten_cot_dk = 'Tiền đăng kí' if 'Tiền đăng kí' in df_full.columns else 'Tiền Đăng Ký'
+        for c in thu_cols + chi_cols + [ten_cot_dk]:
+            if c in df_tai_chinh.columns:
+                df_tai_chinh[c] = pd.to_numeric(df_tai_chinh[c].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+
+        # --- BƯỚC 4: MỤC TÌM KIẾM (HIỆN LIỀN) ---
+        search_prof = st.text_input("🔍 Tìm kiếm trong tài chính", placeholder="Nhập tên khách hoặc SĐT...")
+        df_display = df_tai_chinh.copy()
+        if search_prof:
+            df_display = df_display[
+                (df_display['Khách Hàng'].str.contains(search_prof, case=False, na=False)) |
+                (df_display['SĐT'].str.contains(search_prof, case=False, na=False))
+            ]
+
+        # --- BƯỚC 5: GIAO DIỆN TABS ---
         tab_thu, tab_chi, tab_tong_ket = st.tabs(["🟢 TỔNG THU", "🔵 TỔNG CHI", "🟡 TỔNG KẾT"])
 
         with tab_thu:
             st.subheader("1. Các khoản thu thêm & Tiền đăng ký")
-            cols_thu_show = ['Khách Hàng', ten_cot_dk] + [c for c in thu_cols if c in df_tai_chinh.columns and c != 'Giá Vốn' and c != ten_cot_dk]
-            edited_thu = st.data_editor(
-                df_tai_chinh[cols_thu_show], 
-                key="editor_thu_v_final", 
-                hide_index=True, use_container_width=True,
-                num_rows="dynamic",
-                column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_thu_show if c != 'Khách Hàng'}
-            )
+            cols_thu_show = ['Khách Hàng', 'SĐT', ten_cot_dk] + [c for c in thu_cols if c in df_display.columns and c != 'Giá Vốn' and c != ten_cot_dk]
+            edited_thu = st.data_editor(df_display[cols_thu_show], key="ed_thu_final_v2", hide_index=True, use_container_width=True,
+                                        column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_thu_show if c not in ['Khách Hàng', 'SĐT']})
 
         with tab_chi:
             st.subheader("2. Các khoản chi phí nội bộ")
-            cols_chi_show = ['Khách Hàng'] + [c for c in chi_cols if c in df_tai_chinh.columns]
-            edited_chi = st.data_editor(
-                df_tai_chinh[cols_chi_show], 
-                key="editor_chi_v_final", 
-                hide_index=True, use_container_width=True,
-                num_rows="dynamic",
-                column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_chi_show if c != 'Khách Hàng'}
-            )
+            cols_chi_show = ['Khách Hàng', 'SĐT'] + [c for c in chi_cols if c in df_display.columns]
+            edited_chi = st.data_editor(df_display[cols_chi_show], key="ed_chi_final_v2", hide_index=True, use_container_width=True,
+                                        column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_chi_show if c not in ['Khách Hàng', 'SĐT']})
         
         with tab_tong_ket:
             st.subheader("3. Kết quả kinh doanh thực tế")
-            # Tính tổng trên các cột số
             t_thu = edited_thu.select_dtypes(include=['number']).sum().sum()
             t_chi = edited_chi.select_dtypes(include=['number']).sum().sum()
-            t_loi_nhuan = t_thu - t_chi
-            
             c1, c2, c3 = st.columns(3)
             c1.metric("Tổng Thu Thêm", f"{t_thu:,.0f} đ")
             c2.metric("Tổng Chi Phí", f"{t_chi:,.0f} đ")
-            c3.metric("Lợi Nhuận Ròng", f"{t_loi_nhuan:,.0f} đ")
+            c3.metric("Lợi Nhuận Ròng", f"{(t_thu - t_chi):,.0f} đ")
 
         st.divider()
+        # --- BƯỚC 6: NÚT LƯU CỰC KỲ AN TOÀN ---
         if st.button("🚀 CẬP NHẬT & LƯU DỮ LIỆU TÀI CHÍNH", type="primary", use_container_width=True):
             try:
-                # Đọc lại file gốc để tránh ghi đè thiếu dữ liệu
-                df_root = pd.read_csv(file_path, encoding='utf-8-sig', dtype=str).fillna("0")
-                df_root.columns = df_root.columns.str.strip()
-                if 'Họ Tên' in df_root.columns: df_root = df_root.rename(columns={'Họ Tên': 'Khách Hàng'})
-                
-                # Cập nhật từ bảng đã sửa
+                # Đọc lại file gốc để tránh ghi đè thiếu người
+                df_root = pd.read_csv(file_path, encoding='utf-8-sig', dtype=str).fillna("")
+                df_root.columns = [c.strip() for c in df_root.columns]
+                df_root = df_root.loc[:, ~df_root.columns.duplicated()]
+
+                # Cập nhật dựa trên SĐT (SĐT là duy nhất, Khách Hàng có thể trùng)
                 for _, row in edited_thu.iterrows():
-                    mask = (df_root['Khách Hàng'] == row['Khách Hàng'])
+                    mask = (df_root['SĐT'] == str(row['SĐT']))
                     for col in edited_thu.columns:
-                        if col in df_root.columns: df_root.loc[mask, col] = str(row[col])
+                        if col in df_root.columns and col not in ['Khách Hàng', 'SĐT']:
+                            df_root.loc[mask, col] = str(row[col])
                 
                 for _, row in edited_chi.iterrows():
-                    mask = (df_root['Khách Hàng'] == row['Khách Hàng'])
+                    mask = (df_root['SĐT'] == str(row['SĐT']))
                     for col in edited_chi.columns:
-                        if col in df_root.columns: df_root.loc[mask, col] = str(row[col])
+                        if col in df_root.columns and col not in ['Khách Hàng', 'SĐT']:
+                            df_root.loc[mask, col] = str(row[col])
 
                 df_root.to_csv(file_path, index=False, encoding='utf-8-sig')
                 st.success("✅ Đã cập nhật lợi nhuận thành công!")
