@@ -1500,13 +1500,13 @@ elif st.session_state.page == "Lợi Nhuận":
         with tab_thu:
             st.subheader("1. Các khoản thu thêm & Tiền đăng ký")
             cols_thu_show = ['Khách Hàng', 'SĐT', ten_cot_dk] + [c for c in thu_cols if c in df_display.columns and c != 'Giá Vốn' and c != ten_cot_dk]
-            edited_thu = st.data_editor(df_display[cols_thu_show], key="ed_thu_final_v2", hide_index=True, use_container_width=True,
+            edited_thu = st.data_editor(df_display[cols_thu_show], key="ed_thu_final_v2", hide_index=True, use_container_width=True, num_rows="dynamic",
                                         column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_thu_show if c not in ['Khách Hàng', 'SĐT']})
 
         with tab_chi:
             st.subheader("2. Các khoản chi phí nội bộ")
             cols_chi_show = ['Khách Hàng', 'SĐT'] + [c for c in chi_cols if c in df_display.columns]
-            edited_chi = st.data_editor(df_display[cols_chi_show], key="ed_chi_final_v2", hide_index=True, use_container_width=True,
+            edited_chi = st.data_editor(df_display[cols_chi_show], key="ed_chi_final_v2", hide_index=True, use_container_width=True, num_rows="dynamic",
                                         column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_chi_show if c not in ['Khách Hàng', 'SĐT']})
         
         with tab_tong_ket:
