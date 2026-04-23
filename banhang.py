@@ -458,12 +458,12 @@ elif st.session_state.page == "Báo Giá":
                     ),
                     "CÁC KHOẢN LỆ PHÍ": st.column_config.TextColumn(
                         label="CÁC KHOẢN LỆ PHÍ",
-                        width=1000 # Cho cột này rộng ra để "gánh" diện tích bảng
+                        width=950 # Cho cột này rộng ra để "gánh" diện tích bảng
                     ),
                     "THÀNH TIỀN (VNĐ)": st.column_config.NumberColumn(
                         label="THÀNH TIỀN (VNĐ)",
                         format="%d",
-                        width=180
+                        width=200
                     ),
                 },
                 hide_index=True,
