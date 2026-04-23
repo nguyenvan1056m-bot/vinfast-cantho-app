@@ -18,6 +18,7 @@ TRACKING_FILE = "data_theo_doi_xe.csv"
 LN_FILE = "data_loi_nhuan.csv"
 QT_FILE = "data_quyet_toan.csv"
 CPK_FILE = 'data_chi_phi_khac.csv'
+CS_FILE = 'data_chăm_soc.csv'
 COLS_ORDER = [
     "Ngày", "Họ Tên", "SĐT", "CCCD","Email", "Địa chỉ", "Xe", "Bản", "Màu", "Chính Sách", "Quà Tặng",
     "Giá Sau Ưu Đãi","Tiền Đăng Ký", "Tổng Tiền", "Trạng Thái", "Ghi Chú"
@@ -82,7 +83,7 @@ if 'current_customer' not in st.session_state: st.session_state.current_customer
 st.markdown(f"### BAN HANG VINFAST | {datetime.now().strftime('%d/%m/%Y')}")
 
 # Chia lại thành 6 cột để thêm tab Theo Dõi
-c_nav1, c_nav2, c_nav3, c_nav4, c_nav5, c_nav6, c_nav7 = st.columns(7)
+c_nav1, c_nav2, c_nav3, c_nav4, c_nav5, c_nav6, c_nav7, c_nav8 = st.columns(8)
 
 if c_nav1.button("👋 TIẾP NHẬN", use_container_width=True): 
     st.session_state.page = "Tiếp Nhận"; st.rerun()
@@ -99,6 +100,8 @@ if c_nav6.button("📈 THEO DÕI XE", use_container_width=True):
     st.session_state.page = "Theo Dõi"; st.rerun()
 if c_nav7.button("📈 LỢI NHUẬN", use_container_width=True): 
     st.session_state.page = "Lợi Nhuận"; st.rerun()
+if c_nav8.button("📈 CHĂM SÓC", use_container_width=True): 
+    st.session_state.page = "Chăm Sóc"; st.rerun()
 st.divider()
 
 # --- 3. TRANG TIẾP NHẬN ---
@@ -632,20 +635,7 @@ elif st.session_state.page == "Báo Giá":
             new_row_df = pd.DataFrame([final_data])
             new_row_df.to_csv(DATA_FILE, mode='a', index=False, header=not os.path.exists(DATA_FILE), encoding='utf-8-sig')
             
-            # 5. GHI VÀO FILE LỢI NHUẬN
-            ln_row = {
-                "STT": 0, # Bạn có thể dùng len(df)+1 nếu cần
-                "NGÀY XHĐ": str_ngay,
-                "Khách Hàng": q.get('name', 'N/A'),
-                "Giá Chốt": int(v_gia_chot),
-                "Tiền Đăng Ký": int(v_phi_dk),
-                "Hoa Hồng Bank": 0, "Hoa Hồng HTX": 0, "Hoa Hồng": 0,
-                "LỢI NHUẬN": 0
-            }
-            pd.DataFrame([ln_row]).to_csv(LN_FILE, mode='a', index=False, header=not os.path.exists(LN_FILE), encoding='utf-8-sig')
-
-            st.success(f"✅ Đã lưu khách hàng {q.get('name')} thành công!")
-            time.sleep(1)
+            
             # Ngắt logic để không bị lưu lặp lại và quay về trang đầu
             st.session_state.page = "Tiếp Nhận"
             st.rerun()
@@ -1025,10 +1015,28 @@ elif st.session_state.page == "Quyết Toán":
             # Hàm nội bộ để cứu SĐT (Trị lỗi E+08 và mất số 0)
             def fix_my_sdt(val):
                 s = str(val).strip()
-                if "E+" in s.upper():
-                    try: s = str(int(float(s)))
-                    except: pass
-                if len(s) == 9 and s.isdigit(): s = "0" + s
+
+                # bỏ dấu phẩy + khoảng trắng
+                s = s.replace(',', '').replace(' ', '')
+
+                # bỏ .0
+                if '.' in s:
+                    s = s.split('.')[0]
+
+                if not s or s.lower() == "nan":
+                    return ""
+
+                # xử lý dạng E+
+                if "e+" in s.lower():
+                    try:
+                        s = str(int(float(s)))
+                    except:
+                        pass
+
+                # thêm số 0 nếu thiếu
+                if len(s) == 9 and s.isdigit():
+                    s = "0" + s
+
                 return s
 
             sdt_kh = fix_my_sdt(q.get('SĐT') or q.get('phone') or "")
@@ -1045,14 +1053,14 @@ elif st.session_state.page == "Quyết Toán":
                 df_all = pd.read_csv(DATA_FILE, encoding='utf-8-sig', dtype=str).fillna("")
                 # CỰC QUAN TRỌNG: dtype=str để không bị mất số 0 khi đọc
                 df_all.columns = df_all.columns.str.strip()
-
+                df_all['SĐT'] = df_all['SĐT'].apply(fix_my_sdt)
                 # Đồng bộ tên cột khách hàng
                 if 'Khách Hàng' not in df_all.columns and 'Họ Tên' in df_all.columns:
                     df_all['Khách Hàng'] = df_all['Họ Tên']
                 elif 'Họ Tên' not in df_all.columns and 'Khách Hàng' in df_all.columns:
                     df_all['Họ Tên'] = df_all['Khách Hàng']
                 if 'Khách Hàng' in df_all.columns and ten_kh in df_all['Khách Hàng'].values:
-                    mask = df_all['Khách Hàng'] == ten_kh
+                    mask = df_all['SĐT'] == sdt_kh
                     df_all.loc[mask, 'Trạng Thái'] = "Đã Quyết Toán"
                     df_all.loc[mask, 'SĐT'] = sdt_kh # Ghi đè SĐT đã chuẩn hóa
                     df_all.loc[mask, 'Giá Sau Ưu Đãi'] = v_gia_chot_kh
@@ -1081,7 +1089,9 @@ elif st.session_state.page == "Quyết Toán":
             }
             if os.path.exists(TRACKING_FILE):
                 df_track = pd.read_csv(TRACKING_FILE, encoding='utf-8-sig', on_bad_lines='skip')
-                df_track = df_track[df_track['Khách Hàng'] != ten_kh] 
+                if 'SĐT' in df_track.columns:
+                    df_track['SĐT'] = df_track['SĐT'].apply(fix_my_sdt)
+                df_track = df_track[df_track['SĐT'] != sdt_kh]
                 df_track = pd.concat([df_track, pd.DataFrame([tracking_row])], ignore_index=True)
             else:
                 df_track = pd.DataFrame([tracking_row])
@@ -1089,29 +1099,60 @@ elif st.session_state.page == "Quyết Toán":
             df_track.to_csv(TRACKING_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
 
             # --- 3. GHI VÀO FILE LỢI NHUẬN (LN_FILE) ---
-            ln_row = {
-                "STT": 0, 
-                "NGÀY XHĐ": datetime.now().strftime("%d/%m/%Y"),
-                "Khách Hàng": ten_kh,
-                "Giá Chốt": v_gia_chot_kh,
-                "Tiền Đăng Ký": tien_dk_de_luu,  # <-- QUAN TRỌNG: Đảm bảo biến này bằng 16580000
-                "Hoa Hồng Bank": 0, "Hoa Hồng": 0, "LỢI NHUẬN": 0,
-                "Trạng Thái Giao": "Chờ giao"
-            }
+            trang_thai = tracking_row.get("Trạng Thái Giao", "Chờ giao")
 
-            if os.path.exists(LN_FILE):
-                # Đọc file lợi nhuận lên để kiểm tra
-                df_ln = pd.read_csv(LN_FILE, encoding='utf-8-sig', on_bad_lines='skip')
-                # Xóa dòng cũ của khách này đi để ghi đè số tiền mới vào
-                df_ln = df_ln[df_ln['Khách Hàng'] != ten_kh]
-                df_ln = pd.concat([df_ln, pd.DataFrame([ln_row])], ignore_index=True)
-                df_ln['STT'] = range(1, len(df_ln) + 1)
+# ===== DANH SÁCH LOẠI BỎ =====
+            TRANG_THAI_LOAI = ["Cần chăm sóc", "Hủy cọc"]
+
+            # ===== NẾU KHÔNG HỢP LỆ → KHÔNG VÀO LỢI NHUẬN =====
+            if trang_thai in TRANG_THAI_LOAI:
+                
+                # --- GHI SANG FILE CHĂM SÓC ---
+                cs_row = {
+                    "Ngày": datetime.now().strftime("%d/%m/%Y"),
+                    "Khách Hàng": ten_kh,
+                    "SĐT": sdt_kh,
+                    "Giá Chốt": v_gia_chot_kh,
+                    "Trạng Thái": trang_thai,
+                    "Ghi Chú": tracking_row.get("Ghi Chú", "")
+                }
+
+                CS_FILE = "cham_soc.csv"
+
+                if os.path.exists(CS_FILE):
+                    df_cs = pd.read_csv(CS_FILE, encoding='utf-8-sig')
+                    df_cs = df_cs[df_cs['SĐT'] != sdt_kh]
+                    df_cs = pd.concat([df_cs, pd.DataFrame([cs_row])], ignore_index=True)
+                else:
+                    df_cs = pd.DataFrame([cs_row])
+
+                df_cs.to_csv(CS_FILE, index=False, encoding='utf-8-sig')
+
             else:
-                df_ln = pd.DataFrame([ln_row])
-                df_ln['STT'] = 1
+                # ===== CHỈ NHỮNG KHÁCH HỢP LỆ MỚI VÀO LỢI NHUẬN =====
+                ln_row = {
+                    "STT": 0, 
+                    "NGÀY XHĐ": datetime.now().strftime("%d/%m/%Y"),
+                    "Khách Hàng": ten_kh,
+                    "SĐT": sdt_kh,
+                    "Giá Chốt": v_gia_chot_kh,
+                    "Tiền Đăng Ký": tien_dk_de_luu,
+                    "Hoa Hồng Bank": 0,
+                    "Hoa Hồng": 0,
+                    "LỢI NHUẬN": 0,
+                    "Trạng Thái Giao": trang_thai
+                }
 
-            # Ghi đè lại file Lợi nhuận
-            df_ln.to_csv(LN_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
+                if os.path.exists(LN_FILE):
+                    df_ln = pd.read_csv(LN_FILE, encoding='utf-8-sig')
+                    df_ln = df_ln[df_ln['SĐT'] != sdt_kh]
+                    df_ln = pd.concat([df_ln, pd.DataFrame([ln_row])], ignore_index=True)
+                    df_ln['STT'] = range(1, len(df_ln) + 1)
+                else:
+                    df_ln = pd.DataFrame([ln_row])
+                    df_ln['STT'] = 1
+                df_ln['SĐT'] = df_ln['SĐT'].apply(fix_my_sdt)
+                df_ln.to_csv(LN_FILE, index=False, encoding='utf-8-sig')
 
             st.success(f"🎉 Chốt xong! SĐT: {sdt_kh}")
             time.sleep(1)
@@ -1122,6 +1163,7 @@ elif st.session_state.page == "Quyết Toán":
             st.error(f"Lỗi: {e}")
             
     
+
 # --- 7. TRANG DANH SÁCH ---
 elif st.session_state.page == "Danh Sách":
     st.subheader("📊 Quản lý Danh Sách Khách Hàng")
@@ -1130,77 +1172,95 @@ elif st.session_state.page == "Danh Sách":
         try:
             # 1. Đọc dữ liệu từ file CSV
             df_list = pd.read_csv(DATA_FILE, encoding='utf-8-sig', dtype={'SĐT': str, 'CCCD': str, 'Số điện thoại': str})
-            df_list.columns = [c.strip() for c in df_list.columns] # Xóa khoảng trắng thừa
-            # ===== FIX SĐT CHUẨN =====
+            
+            # Chuẩn hóa tên cột (tránh lỗi dấu cách)
+            df_list.columns = df_list.columns.str.strip()
+
+            # ===== 2. XỬ LÝ CỘT HỌ TÊN (TRỊ TẬN GỐC LỖI KHUYẾT TÊN) =====
+            # Đảm bảo cột Họ Tên luôn tồn tại
+            if 'Họ Tên' not in df_list.columns:
+                df_list['Họ Tên'] = ""
+
+            # Chuyển các giá trị rỗng/lỗi thành None để chuẩn bị "trám" dữ liệu
+            df_list['Họ Tên'] = df_list['Họ Tên'].astype(str).str.strip().replace(['nan', 'None', ''], None)
+
+            # Quét các cột tên dự phòng, hễ chỗ nào Họ Tên bị trống thì lấy cột khác đắp vào
+            possible_name_cols = ['Khách Hàng', 'Ho Ten', 'Tên khách hàng', 'Tên Khách Hàng']
+            for col in possible_name_cols:
+                if col in df_list.columns:
+                    temp_col = df_list[col].astype(str).str.strip().replace(['nan', 'None', ''], None)
+                    df_list['Họ Tên'] = df_list['Họ Tên'].fillna(temp_col)
+
+            # Đổi None về lại chuỗi rỗng
+            df_list['Họ Tên'] = df_list['Họ Tên'].fillna("")
+
+            # ===== 3. XỬ LÝ CỘT SĐT (Chỉ chạy 1 lần) =====
             def fix_sdt_vn(val):
                 s = str(val).strip().replace(',', '').split('.')[0]
-                
-                if not s or s.lower() == "nan":
-                    return ""
-                
+                if not s or s.lower() == "nan": return ""
                 if "E+" in s.upper():
-                    try:
-                        s = str(int(float(s)))
-                    except:
-                        pass
-                
-                if len(s) == 9 and s.isdigit():
-                    s = "0" + s
-
+                    try: s = str(int(float(s)))
+                    except ValueError: pass
+                if len(s) == 9 and s.isdigit(): s = "0" + s
                 return s
 
-            # áp dụng fix
             if 'SĐT' in df_list.columns:
                 df_list['SĐT'] = df_list['SĐT'].apply(fix_sdt_vn)
+            elif 'Số điện thoại' in df_list.columns:
+                # Nếu chỉ có 'Số điện thoại', đổi tên luôn thành 'SĐT' cho đồng nhất
+                df_list['SĐT'] = df_list['Số điện thoại'].apply(fix_sdt_vn)
+            else:
+                df_list['SĐT'] = ""
 
-            if 'Số điện thoại' in df_list.columns:
-                df_list['Số điện thoại'] = df_list['Số điện thoại'].apply(fix_sdt_vn)
-            # FIX SĐT bị dấu phẩy + mất số 0
-            if 'SĐT' in df_list.columns:
-                df_list['SĐT'] = df_list['SĐT'].astype(str).str.replace(',', '')
-
-            if 'Số điện thoại' in df_list.columns:
-                df_list['Số điện thoại'] = df_list['Số điện thoại'].astype(str).str.replace(',', '')
-                        # --- BỘ LỌC TÊN THÔNG MINH (QUAN TRỌNG NHẤT) ---
-            # Nếu file có 'Khách Hàng' mà không có 'Họ Tên', hãy tạo ra cột 'Họ Tên' để các hàm cũ không lỗi
-            if 'Khách Hàng' in df_list.columns and 'Họ Tên' not in df_list.columns:
-                df_list['Họ Tên'] = df_list['Khách Hàng']
-            # Ngược lại, nếu có 'Họ Tên' mà thiếu 'Khách Hàng' (file cũ)
-            elif 'Họ Tên' in df_list.columns and 'Khách Hàng' not in df_list.columns:
-                df_list['Khách Hàng'] = df_list['Họ Tên']
-            # -----------------------------------------------
+            # --- BỘ LỌC BÙ TÊN NẾU TRỐNG (Chỉ chạy khi thật sự KHÔNG CÓ tên ở mọi cột) ---
+            mask_empty_name = (df_list['Họ Tên'] == "") & (df_list['SĐT'] != "")
+            df_list.loc[mask_empty_name, 'Họ Tên'] = "KH_" + df_list.loc[mask_empty_name, 'SĐT'].astype(str)
             
-            # --- PHẦN CHỌN KHÁCH HÀNG QUYẾT TOÁN ---
+            # Đồng bộ ngược lại cột Khách Hàng để dữ liệu các tab khác không bị mâu thuẫn
+            if 'Khách Hàng' in df_list.columns:
+                df_list['Khách Hàng'] = df_list['Họ Tên']
+
+            # --- 4. CHỌN KHÁCH HÀNG ĐỂ QUYẾT TOÁN ---
             st.markdown("### 📑 Chốt Quyết Toán")
             col_select, col_btn = st.columns([3, 1])
             
-            # Bây giờ df_list chắc chắn đã có cột 'Họ Tên' nhờ bộ lọc trên
-            list_names = df_list['Họ Tên'].tolist()
+            # Tạo danh sách hiển thị
+            list_names = (df_list['Họ Tên'] + " - " + df_list['SĐT']).tolist()
+            
             selected_name = col_select.selectbox(
                 "Chọn khách hàng:", 
                 list_names, 
                 index=None, 
                 placeholder="Chọn tên khách để quyết toán..."
             )
-          
-            if col_btn.button("🚀 Sang Quyết Toán", use_container_width=True) and selected_name:
-                row_kh = df_list[df_list['Họ Tên'] == selected_name].iloc[0]
+
+            if col_btn.button("🚀 Sang Quyết Toán", use_container_width=True, key="btn_sang_qt") and selected_name:
                 
-                # Lấy giá trị an toàn bằng .get() để tránh lỗi văng app
-                gia_xe_chuan = row_kh.get('Giá Sau Ưu Đãi', 0)
-                phi_dk_da_luu = row_kh.get('Tiền Đăng Ký', 0)
+                # Cắt lấy SĐT để đối chiếu
+                sdt_selected = selected_name.split(" - ")[-1]
+                row_kh = df_list[df_list['SĐT'] == sdt_selected].iloc[0]
+                
+                # Lấy giá trị an toàn, fallback về 0 nếu dữ liệu rỗng (tránh crash)
+                try:
+                    gia_xe_chuan = float(row_kh.get('Giá Sau Ưu Đãi', 0) or 0)
+                    phi_dk_da_luu = float(row_kh.get('Tiền Đăng Ký', 0) or 0)
+                except ValueError:
+                    gia_xe_chuan = 0
+                    phi_dk_da_luu = 0
 
-                tien_vay_de_sang_qt = int(float(gia_xe_chuan) * 0.85) 
+                tien_vay_de_sang_qt = int(gia_xe_chuan * 0.85) 
 
+                # Lưu vào session_state
                 st.session_state['so_tien_vay_shared'] = tien_vay_de_sang_qt
                 st.session_state['chi_phi_dk_shared'] = int(phi_dk_da_luu)
-                
                 st.session_state['current_customer'] = row_kh.to_dict()
+                
                 st.session_state.page = "Quyết Toán"
                 st.rerun()            
+                
             st.divider()
 
-            # --- PHẦN HIỂN THỊ BẢNG SỬA/XÓA ---
+            # --- 5. PHẦN HIỂN THỊ BẢNG SỬA/XÓA ---
             st.markdown("### 📝 Chỉnh sửa danh sách")
             
             # Chỉ hiển thị các cột thực sự tồn tại để tránh lỗi cấu hình NumberColumn
@@ -1209,39 +1269,32 @@ elif st.session_state.page == "Danh Sách":
                 if c in df_list.columns:
                     conf_cols[c] = st.column_config.NumberColumn(format="%,d")
 
-            if 'SĐT' in df_list.columns:
-                df_list['SĐT'] = df_list['SĐT'].astype(str)
-
             edited = st.data_editor(
                 df_list, 
-                column_order=COLS_ORDER,
+                column_order=COLS_ORDER, 
                 num_rows="dynamic", 
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
                     **conf_cols,
-                    "SĐT": st.column_config.TextColumn(),
-                    "Số điện thoại": st.column_config.TextColumn()
+                    "SĐT": st.column_config.TextColumn()
                 }
             )
             
             if st.button("💾 CẬP NHẬT THAY ĐỔI", use_container_width=True):
-
+                # Chuẩn hóa lại SĐT đề phòng người dùng nhập sai định dạng khi sửa trực tiếp
                 if 'SĐT' in edited.columns:
                     edited['SĐT'] = edited['SĐT'].apply(fix_sdt_vn)
 
-                if 'Số điện thoại' in edited.columns:
-                    edited['Số điện thoại'] = edited['Số điện thoại'].apply(fix_sdt_vn)
-
                 edited.to_csv(DATA_FILE, index=False, encoding='utf-8-sig')
-                st.success("Đã cập nhật!")
+                st.success("Đã cập nhật thay đổi thành công!")
                 st.rerun()
 
         except Exception as e:
-            st.error(f"Lỗi hiển thị danh sách: {e}")
+            st.error(f"Đã xảy ra lỗi khi tải hoặc hiển thị dữ liệu: {e}")
+            
     else:
-        st.info("Chưa có dữ liệu khách hàng.")
-# --- PHẦN LƯU DỮ LIỆU THEO DÕI ---
+        st.info("Chưa có dữ liệu khách hàng. Vui lòng thêm khách hàng mới.")
 elif st.session_state.page == "Theo Dõi":
     st.markdown("### 📋 QUẢN LÝ XE CHỜ GIAO & BÀN GIAO")
     
@@ -1263,7 +1316,22 @@ elif st.session_state.page == "Theo Dõi":
             for c in all_cols:
                 if c not in df_follow.columns:
                     df_follow[c] = "" # Nếu thiếu cột nào thì tự tạo cột trống đó
-
+            # --- MỤC TÌM KIẾM MỚI ---
+            st.markdown("#### 🔍 Tìm kiếm nhanh")
+            search_col1, search_col2 = st.columns([2, 1])
+            with search_col1:
+                search_term = st.text_input(
+                    "Nhập tên khách hàng hoặc số điện thoại...", 
+                    placeholder="Tìm kiếm",
+                    label_visibility="collapsed"
+                )
+            
+            # Thực hiện lọc dữ liệu nếu có nhập từ khóa
+            if search_term:
+                df_follow = df_follow[
+                    df_follow['Khách Hàng'].astype(str).str.contains(search_term, case=False, na=False) |
+                    df_follow['SĐT'].astype(str).str.contains(search_term, case=False, na=False)
+                ]
             # 2. Xử lý ngày tháng để hiện lịch chọn
             for col in ["Ngày CỌC", "Ngày XHĐ", "Ngày Giao Xe"]:
                 df_follow[col] = pd.to_datetime(df_follow[col], errors='coerce', dayfirst=True)
@@ -1309,6 +1377,7 @@ elif st.session_state.page == "Theo Dõi":
                 df_follow,
                 column_order=all_cols, # Ép hiện đúng thứ tự các cột
                 use_container_width=True,
+                num_rows="dynamic",
                 hide_index=True,
                 column_config=conf_follow,
                 key="editor_theo_doi_final"
@@ -1318,102 +1387,178 @@ elif st.session_state.page == "Theo Dõi":
             if st.button("💾 CẬP NHẬT THAY ĐỔI", type="primary", use_container_width=True):
                 try:
                     import csv
-                    df_save = edited_df.copy()
-                    # Chuyển ngày về dạng chữ trước khi lưu
+                    # 1. Tạo bản sao dữ liệu từ bảng Editor
+                    df_temp = edited_df.copy()
+
+                    # 2. Xử lý định dạng ngày tháng chuẩn để lưu file
                     for col in ["Ngày CỌC", "Ngày XHĐ", "Ngày Giao Xe"]:
-                        df_save[col] = pd.to_datetime(df_save[col]).dt.strftime('%d/%m/%Y')
-                        df_save[col] = df_save[col].replace('NaT', '')
-                    
-                    # QUAN TRỌNG: Lưu có quoting để bảo vệ số 0 SĐT
-                    df_save.to_csv(TRACKING_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
-                    st.success("✅ Đã cập nhật thành công!")
-                    time.sleep(1); st.rerun()
+                        if col in df_temp.columns:
+                            df_temp[col] = pd.to_datetime(df_temp[col]).dt.strftime('%d/%m/%Y')
+                            df_temp[col] = df_temp[col].replace('NaT', '')
+
+                    # --- BƯỚC PHÂN LUỒNG QUAN TRỌNG ---
+                    # Danh sách trạng thái bị "đuổi" khỏi bảng chính
+                    danh_sach_loai = ["Cần chăm sóc", "Hủy cọc"]
+
+                    # Lọc ra những khách thuộc diện bị loại (để đưa sang CS_FILE)
+                    df_move_to_care = df_temp[df_temp['Ghi Chú'].isin(danh_sach_loai)]
+
+                    # Lọc ra những khách ở lại bảng chính (Đã cọc, Tiền mặt, Đã giao...)
+                    df_stay_here = df_temp[~df_temp['Ghi Chú'].isin(danh_sach_loai)]
+
+                    # 3. Ghi lại file Theo Dõi (Chỉ còn những người ở lại)
+                    df_stay_here.to_csv(TRACKING_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
+
+                    # 4. Nếu có khách bị loại -> Ghi nối đuôi vào file Chăm Sóc
+                    if not df_move_to_care.empty:
+                        # Ghi thêm SĐT cho chắc chắn để không mất số 0
+                        if os.path.exists(CS_FILE):
+                            df_old_care = pd.read_csv(CS_FILE, dtype=str).fillna("")
+                            df_final_care = pd.concat([df_old_care, df_move_to_care], ignore_index=True)
+                            # Xóa trùng SĐT (nếu lỡ bấm lưu 2 lần)
+                            df_final_care = df_final_care.drop_duplicates(subset=['SĐT'], keep='last')
+                        else:
+                            df_final_care = df_move_to_care
+                        
+                        # Lưu file Chăm Sóc
+                        df_final_care.to_csv(CS_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
+                        st.toast(f"🚚 Đã chuyển {len(df_move_to_care)} khách sang kho Chăm Sóc!")
+
+                    st.success("✅ Đã cập nhật và đồng bộ danh sách thành công!")
+                    time.sleep(1)
+                    st.rerun()
+
                 except Exception as e:
-                    st.error(f"Lỗi khi lưu: {e}")
+                    st.error(f"Lỗi khi lưu và phân loại: {e}")
     else:
         st.info("Chưa có hồ sơ nào trong danh sách Theo Dõi.")
 elif st.session_state.page == "Lợi Nhuận":
     st.header("📊 QUẢN LÝ TÀI CHÍNH CHI TIẾT")
     
-    # --- PHẦN 1: HỆ THỐNG 3 TAB CŨ (Dựa trên danh_sach_khach_hang.csv) ---
+    # --- 1. CẤU HÌNH CỘT ---
     thu_cols = ['Giá Vốn', 'Tiền Đăng Ký', 'Hoa Hồng Bank', 'Hoa Hồng HTX', 'Hoa Hồng', 'Thưởng Chỉ Tiêu']
     chi_cols = ['Ép Biển', 'Lệ Phí C.An', 'BHTNNS', 'BH VCX', 'Đăng Kiểm', 'HTX', 'Xe Thớt', 'Chi Giới Thiệu', 'Quà Tặng', 'HH-MG', 'Phí Hồ Sơ Bank', 'Phí Giao Xe']
-    file_path = "danh_sach_khach_hang.csv" 
+    file_path = DATA_FILE # Sử dụng biến DATA_FILE đã khai báo ở đầu app
 
     if os.path.exists(file_path):
-        df_full = pd.read_csv(file_path, encoding='utf-8-sig', on_bad_lines='skip')
+        # 1. Đọc dữ liệu (KHÔNG fillna("0") ngay lập tức)
+        df_full = pd.read_csv(file_path, encoding='utf-8-sig', dtype=str)
         df_full.columns = [c.strip() for c in df_full.columns]
         
-        # 1. Đổi tên cột & Chuẩn hóa
-        col_gia_chuan = 'Giá Sau Ưu Đãi' if 'Giá Sau Ưu Đãi' in df_full.columns else 'Giá Chốt'
-        ten_cot_dk = 'Tiền đăng kí' if 'Tiền đăng kí' in df_full.columns else 'Tiền Đăng Ký'
-        
+        # 2. Xử lý tên cột Khách Hàng
         if 'Họ Tên' in df_full.columns:
             if 'Khách Hàng' in df_full.columns: df_full = df_full.drop(columns=['Khách Hàng'])
             df_full = df_full.rename(columns={'Họ Tên': 'Khách Hàng'})
-        df_full = df_full.loc[:, ~df_full.columns.duplicated()]
 
-        for c in thu_cols + chi_cols + [col_gia_chuan, 'Giá Vốn', ten_cot_dk]:
+        # 3. DỌN RÁC: Xóa bỏ dòng có tên bị trống hoặc tên là "0", "nan", "none"
+        df_full = df_full.dropna(subset=['Khách Hàng']) # Xóa dòng null
+        df_full['Khách Hàng'] = df_full['Khách Hàng'].astype(str).str.strip()
+        # Lọc bỏ tất cả các loại tên xàm
+        df_full = df_full[~df_full['Khách Hàng'].str.lower().isin(['', 'nan', 'none', '0', 'null'])]
+
+        # 4. Bây giờ mới ép kiểu số và fillna(0) cho các cột tiền
+        ten_cot_dk = 'Tiền đăng kí' if 'Tiền đăng kí' in df_full.columns else 'Tiền Đăng Ký'
+        for c in thu_cols + chi_cols + [ten_cot_dk]:
             if c in df_full.columns:
-                df_full[c] = pd.to_numeric(df_full[c], errors='coerce').fillna(0)
-            else:
-                df_full[c] = 0
+                df_full[c] = pd.to_numeric(df_full[c].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+        # --- 2. LOGIC LỌC TÀI CHÍNH CỰC CHUẨN ---
+        # --- 2. LOGIC LỌC TÀI CHÍNH CẢI TIẾN ---
+        # 1. Đọc danh sách khách đang ở kho Chăm Sóc để loại trừ
+        list_sdt_cham_soc = []
+        if os.path.exists(CS_FILE):
+            df_cs_check = pd.read_csv(CS_FILE, dtype=str)
+            if 'SĐT' in df_cs_check.columns:
+                list_sdt_cham_soc = df_cs_check['SĐT'].tolist()
 
-        df = df_full.copy()
-        if 'Khách Hàng' in df.columns:
-            df = df.drop_duplicates(subset=['Khách Hàng'], keep='last')
+        # 2. Chuẩn hóa dữ liệu trong df_full
+        df_full['Ghi Chú'] = df_full['Ghi Chú'].astype(str).str.strip().str.lower()
+        df_full['Trạng Thái'] = df_full['Trạng Thái'].astype(str).str.strip().str.lower()
 
-        tab_thu, tab_chi, tab_tong_ket = st.tabs(["🟢 TỔNG THU", "🔵 TỔNG CHI", "🟡 TỔNG KẾT"])
+        # 3. Định nghĩa các mặt xích lọc
+        dk_hop_le = ["tiền mặt", "đã cọc", "ck", "chuyển khoản", "cọc"]
+        mask_ghi_chu = df_full['Ghi Chú'].apply(lambda x: any(k in str(x) for k in dk_hop_le))
+        mask_quyet_toan = df_full['Trạng Thái'].isin(['đã quyết toán', 'da quyet toan'])
         
+        # KIỂM TRA TRẠNG THÁI GIAO
+        if 'Trạng Thái Giao' in df_full.columns:
+            df_full['Trạng Thái Giao'] = df_full['Trạng Thái Giao'].astype(str).str.strip().str.lower()
+            mask_loai_bo = df_full['Trạng Thái Giao'].isin(["cần chăm sóc", "hủy cọc"])
+        else:
+            mask_loai_bo = pd.Series([False]*len(df_full))
+
+        # 4. BƯỚC QUAN TRỌNG: Loại bỏ khách nếu SĐT nằm trong file Chăm Sóc
+        mask_trong_kho_cs = df_full['SĐT'].isin(list_sdt_cham_soc)
+
+        # 5. TẠO BẢNG TÀI CHÍNH (Kết hợp tất cả điều kiện)
+        df_tai_chinh = df_full[
+            (mask_quyet_toan | mask_ghi_chu) &  # Hoặc quyết toán, hoặc đã cọc
+            ~mask_loai_bo &                     # Không phải trạng thái cần chăm sóc
+            ~mask_trong_kho_cs                  # Tuyệt đối không nằm trong file Chăm Sóc
+        ].copy()
+
+        # Loại bỏ trùng (lấy dòng mới nhất)
+        df_tai_chinh = df_tai_chinh.drop_duplicates(subset=['SĐT'], keep='last')
+        tab_thu, tab_chi, tab_tong_ket = st.tabs(["🟢 TỔNG THU", "🔵 TỔNG CHI", "🟡 TỔNG KẾT"])
+
         with tab_thu:
             st.subheader("1. Các khoản thu thêm & Tiền đăng ký")
-            uu_tien = ['Khách Hàng', ten_cot_dk]
-            cac_cot_khac = [c for c in thu_cols if c in df.columns and c not in uu_tien and c not in ['Giá Vốn', 'Giá Sau Ưu Đãi', 'Giá Chốt']]
-            cols_thu_show = uu_tien + cac_cot_khac
+            cols_thu_show = ['Khách Hàng', ten_cot_dk] + [c for c in thu_cols if c in df_tai_chinh.columns and c != 'Giá Vốn' and c != ten_cot_dk]
             edited_thu = st.data_editor(
-                df[cols_thu_show], key="editor_thu_v_final", 
+                df_tai_chinh[cols_thu_show], 
+                key="editor_thu_v_final", 
                 hide_index=True, use_container_width=True,
+                num_rows="dynamic",
                 column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_thu_show if c != 'Khách Hàng'}
             )
 
         with tab_chi:
             st.subheader("2. Các khoản chi phí nội bộ")
-            cols_chi_show = ['Khách Hàng'] + [c for c in chi_cols if c in df.columns]
+            cols_chi_show = ['Khách Hàng'] + [c for c in chi_cols if c in df_tai_chinh.columns]
             edited_chi = st.data_editor(
-                df[cols_chi_show], key="editor_chi_v_final", 
+                df_tai_chinh[cols_chi_show], 
+                key="editor_chi_v_final", 
                 hide_index=True, use_container_width=True,
+                num_rows="dynamic",
                 column_config={c: st.column_config.NumberColumn(format="%,d") for c in cols_chi_show if c != 'Khách Hàng'}
             )
         
         with tab_tong_ket:
             st.subheader("3. Kết quả kinh doanh thực tế")
-            t_thu_ngoai = edited_thu[[c for c in edited_thu.columns if c != 'Khách Hàng']].sum().sum()
-            t_chi = edited_chi[[c for c in edited_chi.columns if c != 'Khách Hàng']].sum().sum()
-            t_loi_nhuan = t_thu_ngoai - t_chi
+            # Tính tổng trên các cột số
+            t_thu = edited_thu.select_dtypes(include=['number']).sum().sum()
+            t_chi = edited_chi.select_dtypes(include=['number']).sum().sum()
+            t_loi_nhuan = t_thu - t_chi
+            
             c1, c2, c3 = st.columns(3)
-            c1.metric("Tổng Doanh Thu", f"{t_thu_ngoai:,.0f} đ")
-            c2.metric("Tổng Chi & Vốn", f"{t_chi:,.0f} đ")
+            c1.metric("Tổng Thu Thêm", f"{t_thu:,.0f} đ")
+            c2.metric("Tổng Chi Phí", f"{t_chi:,.0f} đ")
             c3.metric("Lợi Nhuận Ròng", f"{t_loi_nhuan:,.0f} đ")
 
         st.divider()
-        if st.button("🚀 CẬP NHẬT & LƯU ", type="primary", use_container_width=True):
+        if st.button("🚀 CẬP NHẬT & LƯU DỮ LIỆU TÀI CHÍNH", type="primary", use_container_width=True):
             try:
-                for index, row in edited_thu.iterrows():
-                    ten_kh = row['Khách Hàng']
-                    mask = df_full['Khách Hàng'] == ten_kh
+                # Đọc lại file gốc để tránh ghi đè thiếu dữ liệu
+                df_root = pd.read_csv(file_path, encoding='utf-8-sig', dtype=str).fillna("0")
+                df_root.columns = df_root.columns.str.strip()
+                if 'Họ Tên' in df_root.columns: df_root = df_root.rename(columns={'Họ Tên': 'Khách Hàng'})
+                
+                # Cập nhật từ bảng đã sửa
+                for _, row in edited_thu.iterrows():
+                    mask = (df_root['Khách Hàng'] == row['Khách Hàng'])
                     for col in edited_thu.columns:
-                        if col in df_full.columns: df_full.loc[mask, col] = row[col]
-                    chi_row = edited_chi[edited_chi['Khách Hàng'] == ten_kh]
-                    if not chi_row.empty:
-                        for col in edited_chi.columns:
-                            if col in df_full.columns: df_full.loc[mask, col] = chi_row.iloc[0][col]
-                df_full.to_csv(file_path, index=False, encoding='utf-8-sig')
-                st.success("✅ Đã cập nhật dữ liệu 3 Tab!")
+                        if col in df_root.columns: df_root.loc[mask, col] = str(row[col])
+                
+                for _, row in edited_chi.iterrows():
+                    mask = (df_root['Khách Hàng'] == row['Khách Hàng'])
+                    for col in edited_chi.columns:
+                        if col in df_root.columns: df_root.loc[mask, col] = str(row[col])
+
+                df_root.to_csv(file_path, index=False, encoding='utf-8-sig')
+                st.success("✅ Đã cập nhật lợi nhuận thành công!")
+                time.sleep(1)
                 st.rerun()
             except Exception as e:
                 st.error(f"Lỗi khi lưu: {e}")
-    else:
-        st.error(f"❌ Không tìm thấy file: {file_path}")
 
     # --- PHẦN 2: BẢNG RIÊNG BIỆT 28 CỘT (Dựa trên detailed_contracts.csv) ---
     # --- PHẦN 2: BẢNG RIÊNG BIỆT 28 CỘT (Dựa trên detailed_contracts.csv) ---
@@ -1423,16 +1568,19 @@ elif st.session_state.page == "Lợi Nhuận":
     COLS_28 = [
         "ID", "Khách Hàng", "SĐT", "Loại Xe", "Số Khung", "Số Máy", 
         "Ngày Cọc", "Ngày Xuất HĐ", "Ngày Giao Xe", "Tiền Cọc", 
-        "Giá Trị HĐ", "Chương Trình", "Quà Tặng", "Ghi Chú", 
+        "Giá Trị HĐ", "Trạng Thái Giao",   # ✅ THÊM DÒNG NÀY
+        "Ghi Chú", 
         "Thu_Đăng Ký", "Thu_Hoa Hồng Bank", "Thu_Hoa Hồng HTX", "Thu_Hoa Hồng", 
         "Chi_Ép Biển", "Chi_Lệ Phí CA", "Chi_BHTNNS", "Chi_BH VCX", 
         "Chi_Đăng Kiểm", "Chi_HTX", "Chi_Xe Thớt", "Chi_Giới Thiệu", 
         "Chi_Quà Tặng", "Lợi Nhuận"
     ]
+    
     MASTER_FILE = "detailed_contracts.csv"
     SOURCE_FILE = "danh_sach_khach_hang.csv"
     TRACKING_FILE = "data_theo_doi_xe.csv"
     # 1. Tự động nạp dữ liệu cũ (nếu có)
+
     if 'df_master_28' not in st.session_state:
         if os.path.exists(MASTER_FILE):
             df_init = pd.read_csv(MASTER_FILE, encoding='utf-8-sig', dtype=str).fillna(0)
@@ -1480,8 +1628,81 @@ elif st.session_state.page == "Lợi Nhuận":
                     ten_chuan = str(row.get('Khách Hàng', '')).strip()
                     if not ten_chuan: ten_chuan = str(row.get('Họ Tên', '')).strip()
                     if not ten_chuan: continue # Bỏ qua dòng trống
+                    # ===== LẤY TRẠNG THÁI =====
+                    trang_thai = str(row.get('Trạng Thái Giao', '')).strip()
+                    if trang_thai.lower() == "nan":
+                        trang_thai = ""
+                    ghi_chu = str(row.get('Ghi Chú', '')).strip()
 
-                    # Lấy SĐT từ bất cứ nguồn nào có thể
+                    # ===== 1. CHĂM SÓC / HỦY CỌC =====
+                    if trang_thai in ["Cần chăm sóc", "Hủy cọc"]:
+
+                        sdt_cs = clean_sdt_final(row.get('SĐT_src', row.get('SĐT_trk', row.get('SĐT', ''))))
+                        
+                        # --- FIX: BỐC QUÀ TẶNG & CHÍNH SÁCH TỪ BẢNG GỐC SANG ---
+                        def safe_get(row, *cols):
+                            for c in cols:
+                                if c in row and str(row[c]).strip() not in ["", "nan", "None"]:
+                                    return str(row[c]).strip()
+                            return ""
+
+                        chinh_sach = safe_get(row, 'Chính Sách', 'Chương Trình', 'Chương Trình_src', 'Chương Trình_trk')
+                        qua_tang   = safe_get(row, 'Quà Tặng', 'Quà Tặng_src', 'Quà Tặng_trk', 'val_quatang')
+
+                        if not chinh_sach:
+                            chinh_sach = "Không áp dụng"
+                        if not qua_tang:
+                            qua_tang = "Không có"
+                        if chinh_sach.lower() == 'nan' or not chinh_sach: chinh_sach = "Không áp dụng"
+                        if qua_tang.lower() == 'nan' or not qua_tang: qua_tang = "Không có"
+                        cs_row = {
+                            "Ngày": datetime.now().strftime("%d/%m/%Y"),
+                            "Khách Hàng": ten_chuan, 
+                            "SĐT": sdt_cs,
+                            "Loại Xe": row.get('Xe', row.get('Loại Xe', '')),
+                            "Số Tiền HĐ": row.get('Giá Sau Ưu Đãi', row.get('Giá Trị HĐ', 0)),
+                            "Số Tiền Thực Thu": row.get('Tổng Tiền', 0),
+                            "Số Tiền Chốt Khách": row.get('Tổng Tiền', 0),
+                            "Chương Trình": None,  # <-- Đã được bơm dữ liệu
+                            "Quà Tặng": None,        # <-- Đã được bơm dữ liệu
+                            "Trạng Thái Giao": "Chờ giao",
+                            "Trạng Thái": trang_thai, 
+                            "Ghi Chú": ghi_chu
+                        }
+
+                        CS_FILE = "cham_soc.csv"
+
+                        if os.path.exists(CS_FILE):
+                            df_cs = pd.read_csv(CS_FILE, encoding='utf-8-sig')
+                            df_cs = df_cs[df_cs['SĐT'] != sdt_cs]
+                            df_cs = pd.concat([df_cs, pd.DataFrame([cs_row])], ignore_index=True)
+                        else:
+                            df_cs = pd.DataFrame([cs_row])
+
+                        df_cs.to_csv(CS_FILE, index=False, encoding='utf-8-sig')
+
+                        continue  # ❗ rất quan trọng
+
+                    # ===== 2. CHỈ NHẬN CHỜ GIAO / ĐÃ GIAO =====
+                    if trang_thai not in ["Chờ giao", "Đã giao"]:
+                        continue
+
+                    # ===== 3. ĐIỀU KIỆN GHI CHÚ =====
+                    DIEU_KIEN_OK = ["tiền mặt", "đã cọc", "chờ đăng ký"]
+
+                    ghi_chu_lower = ghi_chu.lower()
+
+                    DIEU_KIEN_OK = ["tiền mặt", "đã cọc", "chờ đăng ký", "ck", "chuyển khoản"]
+
+                    # ✔️ cho phép ghi chú rỗng vẫn chạy
+                    hop_le_ghi_chu = (
+                        ghi_chu_lower == "" or
+                        any(x in ghi_chu_lower for x in DIEU_KIEN_OK)
+                    )
+
+                    if not hop_le_ghi_chu:
+                        print("❌ BỎ:", ten_chuan, "| ghi chú:", ghi_chu)
+                        continue
                     sdt_final = clean_sdt_final(row.get('SĐT_src', row.get('SĐT_trk', row.get('SĐT', ''))))
                                 # TẠO DÒNG 28 CỘT (Chỉ chứa dữ liệu chữ/số)
                     item = {
@@ -1495,6 +1716,7 @@ elif st.session_state.page == "Lợi Nhuận":
                         "Ngày Xuất HĐ": row.get('Ngày XHĐ', ''),
                         "Ngày Giao Xe": row.get('Ngày Giao Xe', ''),
                         "Giá Trị HĐ": row.get('Giá Sau Ưu Đãi', row.get('Số Tiền Chốt Khách', 0)),
+                        "Trạng Thái Giao": trang_thai,
                         "Thu_Đăng Ký": row.get('Tiền Đăng Ký', 0),
                         "Thu_Hoa Hồng Bank": row.get('Hoa Hồng Bank', 0),
                         "Thu_Hoa Hồng HTX": row.get('Hoa Hồng HTX', 0),
@@ -1507,7 +1729,7 @@ elif st.session_state.page == "Lợi Nhuận":
                         "Chi_HTX": row.get('HTX', 0),
                         "Chi_Xe Thớt": row.get('Xe Thớt', 0),
                         "Chi_Giới Thiệu": row.get('Chi Giới Thiệu', 0),
-                        "Chi_Quà Tặng": row.get('Quà Tặng', 0),
+                        "Chi_Quà Tặng": row.get('val_quatang', 0),
                     }
                     
                     # Điền nốt các cột còn lại trong COLS_28 nếu còn thiếu
@@ -1522,10 +1744,24 @@ elif st.session_state.page == "Lợi Nhuận":
                                 item[c] = val
 
                     new_data.append(item)
-                
-                # Xuất kết quả
+                    if len(new_data) == 0:
+                        st.error("❌ Không có dữ liệu hợp lệ → check lại:")
+                        st.write(df_src[['Khách Hàng','Trạng Thái Giao','Ghi Chú']].head(10))
+                        st.stop()
+                    # Xuất kết quả
                 df_final = pd.DataFrame(new_data)
-                st.session_state['df_master_28'] = df_final[COLS_28]
+
+                # đảm bảo đủ cột
+                for col in COLS_28:
+                    if col not in df_final.columns:
+                        df_final[col] = ""
+
+                df_final = df_final[COLS_28]
+
+                st.session_state['df_master_28'] = df_final
+
+                # ✅ sửa ở đây
+                df_final.to_csv(MASTER_FILE, index=False, encoding='utf-8-sig')
                 st.success("✅ Đã đồng bộ sạch sẽ! Nhớ bấm LƯU ở dưới nhé."); st.rerun()
                 
             except Exception as e:
@@ -1542,6 +1778,13 @@ elif st.session_state.page == "Lợi Nhuận":
         
         # Công thức tính Lợi Nhuận
         for idx, r in df_edit.iterrows():
+    
+            trang_thai = str(r.get('Trạng Thái Giao', '')).strip()
+
+            # CHỈ TÍNH LN KHI ĐÃ GIAO XE
+            if trang_thai != "Đã giao":
+                df_edit.at[idx, 'Lợi Nhuận'] = 0
+                continue
             t_thu = sum([r[c] for c in COLS_28 if "Thu_" in c])
             t_chi = sum([r[c] for c in COLS_28 if "Chi_" in c])
             df_edit.at[idx, 'Lợi Nhuận'] = t_thu - t_chi
@@ -1557,4 +1800,90 @@ elif st.session_state.page == "Lợi Nhuận":
         
         if st.button("💾 LƯU BẢNG ", type="primary", use_container_width=True):
             edited_28.to_csv(MASTER_FILE, index=False, encoding='utf-8-sig')
-            st.success("✅ Đã lưu dữ liệu vào detailed_contracts.csv")
+            st.success("✅ Đã lưu dữ liệu ")
+elif st.session_state.page == "Chăm Sóc":
+    st.subheader("📁 KHO LƯU TRỮ KHÁCH HÀNG HỦY & CẦN CHĂM SÓC")
+    
+    if os.path.exists(CS_FILE):
+        df_cs = pd.read_csv(CS_FILE, dtype=str).fillna("")
+        # --- PHẦN 1: MỤC TÌM KIẾM (BẤM LÀ HIỆN LIỀN) ---
+        search_cs = st.text_input("🔍 Tìm kiếm khách hàng", placeholder="Nhập tên khách hoặc số điện thoại để lọc nhanh...")
+        
+        # Tạo bản sao để lọc hiển thị
+        df_display_cs = df_cs.copy()
+        if search_cs:
+            mask = (df_display_cs['Khách Hàng'].str.contains(search_cs, case=False, na=False)) | \
+                   (df_display_cs['SĐT'].str.contains(search_cs, case=False, na=False))
+            df_display_cs = df_display_cs[mask]
+
+        st.info(f"💡 Đang hiển thị {len(df_display_cs)} khách hàng.")      
+        # Bảng hiển thị ở đây cho phép đại ca sửa lại nếu khách "quay xe" mua lại
+        edited_cs = st.data_editor(
+            df_cs,
+            use_container_width=True,
+            num_rows="dynamic",
+            hide_index=True,
+            column_config={
+                "Khách Hàng": st.column_config.TextColumn("Khách Hàng", pinned=True),
+                "SĐT": st.column_config.TextColumn("Số Điện Thoại"),
+
+                # CHUYỂN SELECTBOX SANG CỘT GHI CHÚ
+                "Ghi Chú": st.column_config.SelectboxColumn(
+                    "Trạng Thái (Ghi chú)",
+                    options=["Cần chăm sóc", "Hủy cọc", "Đã cọc lại"]
+                ),
+
+                # Ẩn hết các cột không cần thiết (Bao gồm cả Quà tặng & Chương trình nếu có lỡ lưu trong file)
+                "Chương Trình": None,
+                "Quà Tặng": None,
+                "Trạng Thái": None, 
+                "Ngày XHĐ": None,
+                "Ngày Giao Xe": None
+            }
+        )
+        
+        if st.button("💾 CẬP NHẬT KHO CHĂM SÓC", use_container_width=True):
+            import csv
+            
+            df_to_tracking = edited_cs[edited_cs['Ghi Chú'] == "Đã cọc lại"].copy()
+            df_stay_cs = edited_cs[edited_cs['Ghi Chú'] != "Đã cọc lại"].copy()
+            
+            # Lưu lại kho chăm sóc
+            df_stay_cs.to_csv(CS_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
+            
+            if not df_to_tracking.empty:
+                TRACKING_FILE = "data_theo_doi_xe.csv"
+                
+                # Cập nhật thông tin cho việc đẩy sang Tracking
+                df_to_tracking['Trạng Thái Giao'] = "Chờ giao"
+                df_to_tracking['Ghi Chú'] = "Đã cọc lại"
+                
+                if 'Ngày' in df_to_tracking.columns:
+                    df_to_tracking = df_to_tracking.rename(columns={'Ngày': 'Ngày CỌC'})
+
+                if os.path.exists(TRACKING_FILE):
+                    df_track = pd.read_csv(TRACKING_FILE, encoding='utf-8-sig', dtype=str).fillna("")
+                    
+                    # Cập nhật hoặc thêm mới khách hàng vào Tracking
+                    for _, row in df_to_tracking.iterrows():
+                        sdt_kh = row['SĐT']
+                        if sdt_kh in df_track['SĐT'].values:
+                            df_track.loc[df_track['SĐT'] == sdt_kh, 'Trạng Thái Giao'] = "Chờ giao"
+                            df_track.loc[df_track['SĐT'] == sdt_kh, 'Ghi Chú'] = "Đã cọc lại"
+                        else:
+                            df_track = pd.concat([df_track, pd.DataFrame([row])], ignore_index=True)
+                            
+                else:
+                    df_track = df_to_tracking
+                
+                df_track.to_csv(TRACKING_FILE, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
+                st.success(f"🎉 Khách hàng quay lại! Đã chuyển {len(df_to_tracking)} hồ sơ về bảng Theo Dõi.")
+            else:
+                st.success("Đã lưu thay đổi trong kho chăm sóc!")
+                
+            time.sleep(0.5)
+            if not df_to_tracking.empty:
+                st.session_state.page = "Theo Dõi"
+            st.rerun()
+    else:
+        st.info("Kho chăm sóc hiện đang trống.")
